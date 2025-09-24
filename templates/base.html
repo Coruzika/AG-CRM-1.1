@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Sistema de Cobrança{% endblock %}</title>
+    
+    <!-- Bootstrap CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <!-- Font Awesome -->
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <!-- DataTables CSS -->
+    <link href="https://cdn.datatables.net/1.11.5/css/dataTables.bootstrap5.min.css" rel="stylesheet">
+    
+    <style>
+        :root {
+            --primary-color: #4e73df;
+            --success-color: #1cc88a;
+            --info-color: #36b9cc;
+            --warning-color: #f6c23e;
+            --danger-color: #e74a3b;
+            --light-color: #f8f9fc;
+            --dark-color: #5a5c69;
+        }
+
+        body {
+            background-color: #f8f9fc;
+            font-family: 'Nunito', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Helvetica Neue', Arial, sans-serif;
+        }
+
+        .navbar-brand {
+            font-weight: 800;
+            font-size: 1.2rem;
+        }
+
+        .sidebar {
+            background: linear-gradient(180deg, #4e73df 10%, #224abe 100%);
+            min-height: 100vh;
+        }
+
+        .sidebar .nav-link {
+            color: rgba(255, 255, 255, 0.8);
+            padding: 1rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            border-radius: 0.35rem;
+            margin: 0.25rem 1rem;
+        }
+
+        .sidebar .nav-link:hover,
+        .sidebar .nav-link.active {
+            color: #fff;
+            background-color: rgba(255, 255, 255, 0.1);
+        }
+
+        .sidebar .nav-link i {
+            margin-right: 0.5rem;
+        }
+
+        .content-wrapper {
+            flex: 1;
+        }
+
+        .card {
+            box-shadow: 0 0.15rem 1.75rem 0 rgba(58, 59, 69, 0.15);
+            border: 1px solid #e3e6f0;
+        }
+
+        .card-header {
+            background-color: #f8f9fc;
+            border-bottom: 1px solid #e3e6f0;
+        }
+
+        .btn-primary {
+            background-color: var(--primary-color);
+            border-color: var(--primary-color);
+        }
+
+        .btn-primary:hover {
+            background-color: #2e59d9;
+            border-color: #2e59d9;
+        }
+
+        .badge {
+            font-size: 0.75rem;
+        }
+
+        .table th {
+            border-top: none;
+            font-weight: 600;
+            color: #5a5c69;
+            background-color: #f8f9fc;
+        }
+
+        .alert {
+            border: none;
+            border-radius: 0.35rem;
+        }
+
+        .form-control:focus {
+            border-color: var(--primary-color);
+            box-shadow: 0 0 0 0.2rem rgba(78, 115, 223, 0.25);
+        }
+
+        .text-primary {
+            color: var(--primary-color) !important;
+        }
+
+        .text-success {
+            color: var(--success-color) !important;
+        }
+
+        .text-warning {
+            color: var(--warning-color) !important;
+        }
+
+        .text-danger {
+            color: var(--danger-color) !important;
+        }
+
+        .bg-primary {
+            background-color: var(--primary-color) !important;
+        }
+
+        .bg-success {
+            background-color: var(--success-color) !important;
+        }
+
+        .bg-warning {
+            background-color: var(--warning-color) !important;
+        }
+
+        .bg-danger {
+            background-color: var(--danger-color) !important;
+        }
+    </style>
+    
+    {% block extra_css %}{% endblock %}
+</head>
+<body>
+    <!-- Flash Messages -->
+    {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+            <div class="position-fixed top-0 end-0 p-3" style="z-index: 1050;">
+                {% for category, message in messages %}
+                    <div class="alert alert-{{ 'danger' if category == 'error' else category }} alert-dismissible fade show" role="alert">
+                        {{ message }}
+                        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                    </div>
+                {% endfor %}
+            </div>
+        {% endif %}
+    {% endwith %}
+
+    <div class="d-flex">
+        <!-- Sidebar -->
+        <div class="sidebar d-flex flex-column p-3" style="width: 250px;">
+            <div class="d-flex align-items-center mb-3 mb-md-0 me-md-auto text-white text-decoration-none">
+                <i class="fas fa-cash-register me-2"></i>
+                <span class="navbar-brand">CRM Cobrança</span>
+            </div>
+            <hr>
+            <ul class="nav nav-pills flex-column mb-auto">
+                <li class="nav-item">
+                    <a href="{{ url_for('index') }}" class="nav-link {{ 'active' if request.endpoint == 'index' }}">
+                        <i class="fas fa-tachometer-alt"></i>
+                        Dashboard
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a href="{{ url_for('listar_clientes') }}" class="nav-link {{ 'active' if request.endpoint in ['listar_clientes', 'adicionar_cliente', 'visualizar_cliente', 'editar_cliente'] }}">
+                        <i class="fas fa-users"></i>
+                        Clientes
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a href="{{ url_for('adicionar_cobranca') }}" class="nav-link {{ 'active' if request.endpoint == 'adicionar_cobranca' }}">
+                        <i class="fas fa-file-invoice-dollar"></i>
+                        Nova Cobrança
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a href="{{ url_for('listar_dividas') }}" class="nav-link {{ 'active' if request.endpoint in ['listar_dividas', 'adicionar_divida', 'editar_divida'] }}">
+                        <i class="fas fa-exclamation-triangle"></i>
+                        Dívidas
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a href="{{ url_for('relatorios') }}" class="nav-link {{ 'active' if request.endpoint == 'relatorios' }}">
+                        <i class="fas fa-chart-bar"></i>
+                        Relatórios
+                    </a>
+                </li>
+                {% if session.get('usuario_tipo') == 'admin' %}
+                <li class="nav-item">
+                    <a href="{{ url_for('listar_usuarios') }}" class="nav-link {{ 'active' if request.endpoint in ['listar_usuarios', 'adicionar_usuario', 'editar_usuario'] }}">
+                        <i class="fas fa-user-cog"></i>
+                        Usuários
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a href="{{ url_for('configuracoes') }}" class="nav-link {{ 'active' if request.endpoint == 'configuracoes' }}">
+                        <i class="fas fa-cog"></i>
+                        Configurações
+                    </a>
+                </li>
+                {% endif %}
+            </ul>
+            <hr>
+            <div class="dropdown">
+                <a href="#" class="d-flex align-items-center text-white text-decoration-none dropdown-toggle" id="dropdownUser1" data-bs-toggle="dropdown">
+                    <i class="fas fa-user-circle me-2"></i>
+                    <strong>{{ session.get('usuario_nome', 'Usuário') }}</strong>
+                </a>
+                <ul class="dropdown-menu dropdown-menu-dark text-small shadow">
+                    <li><span class="dropdown-item-text">{{ session.get('usuario_email', '') }}</span></li>
+                    <li><hr class="dropdown-divider"></li>
+                    <li><a class="dropdown-item" href="{{ url_for('logout') }}">
+                        <i class="fas fa-sign-out-alt me-2"></i>Sair
+                    </a></li>
+                </ul>
+            </div>
+        </div>
+
+        <!-- Main Content -->
+        <div class="content-wrapper flex-grow-1">
+            <main class="p-4">
+                {% block content %}{% endblock %}
+            </main>
+        </div>
+    </div>
+
+    <!-- Bootstrap JS -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    <!-- jQuery -->
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <!-- DataTables JS -->
+    <script src="https://cdn.datatables.net/1.11.5/js/jquery.dataTables.min.js"></script>
+    <script src="https://cdn.datatables.net/1.11.5/js/dataTables.bootstrap5.min.js"></script>
+    
+    <script>
+        // Auto-hide flash messages after 5 seconds
+        $(document).ready(function() {
+            setTimeout(function() {
+                $('.alert').fadeOut();
+            }, 5000);
+        });
+    </script>
+    
+    {% block extra_js %}{% endblock %}
+</body>
+</html>

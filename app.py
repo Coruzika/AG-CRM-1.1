@@ -1,16 +1,16 @@
-# app.py
+# app.py - PostgreSQL Only Version
 
 import os
 import sys
-import psycopg
-from psycopg.rows import dict_row
-from psycopg.errors import UniqueViolation
 from flask import Flask, render_template, request, redirect, url_for, jsonify, flash, session
 from datetime import datetime, timedelta
 from werkzeug.security import generate_password_hash, check_password_hash
 from functools import wraps
 import secrets
 import re
+import psycopg
+from psycopg.rows import dict_row
+from psycopg.errors import UniqueViolation
 
 # Carregar variáveis de ambiente do arquivo .env se existir
 try:
@@ -27,63 +27,28 @@ app.secret_key = os.getenv('SECRET_KEY', secrets.token_hex(16))  # Chave secreta
 # --- Configuração e Inicialização do Banco de Dados ---
 DATABASE_URL = os.getenv('DATABASE_URL')
 
-
-class DBConnection:
-    def __init__(self, connection):
-        self._conn = connection
-
-    def execute(self, sql, params=None):
-        if params is None:
-            params = ()
-        sql = self._convert_sql(sql)
-        cur = self._conn.cursor(row_factory=dict_row)
-        cur.execute(sql, params)
-        return cur
-
-    def commit(self):
-        self._conn.commit()
-
-    def rollback(self):
-        self._conn.rollback()
-
-    def close(self):
-        self._conn.close()
-
-    def _convert_sql(self, sql: str) -> str:
-        # Conversões simples de sintaxe SQLite -> PostgreSQL
-        s = sql
-        # Placeholders
-        s = s.replace('?', '%s')
-        # Datas/funções
-        s = s.replace("date(\"now\")", 'CURRENT_DATE').replace("date('now')", 'CURRENT_DATE')
-        s = s.replace("strftime('%Y-%m', data_vencimento)", "to_char(data_vencimento, 'YYYY-MM')")
-        s = s.replace('date(data_vencimento)', 'data_vencimento')
-        # Operadores
-        s = s.replace(' != ', ' <> ')
-        # Strings entre aspas duplas (padrão SQLite)
-        s = s.replace('"', "'")
-        return s
-
+if not DATABASE_URL:
+    raise RuntimeError('DATABASE_URL não configurada. Defina a variável de ambiente.')
 
 def get_db():
     """Abre uma nova conexão com o banco de dados PostgreSQL."""
-    if not DATABASE_URL:
-        raise RuntimeError('DATABASE_URL não configurada. Defina a variável de ambiente para conectar ao PostgreSQL.')
     # Em ambientes gerenciados (ex.: Render), forçar SSL se não especificado
     db_url = DATABASE_URL
     if 'sslmode=' not in db_url and 'localhost' not in db_url and '127.0.0.1' not in db_url:
         separator = '&' if '?' in db_url else '?'
         db_url = f"{db_url}{separator}sslmode=require"
+    
     conn = psycopg.connect(db_url)
-    return DBConnection(conn)
+    return conn
 
 def init_db():
-    """Inicializa o banco PostgreSQL e cria as tabelas se não existirem."""
+    """Inicializa o banco de dados PostgreSQL e cria as tabelas se não existirem."""
     with app.app_context():
-        db = get_db()
+        conn = get_db()
+        cur = conn.cursor()
 
         # Tabela de usuários para autenticação
-        db.execute('''
+        cur.execute('''
             CREATE TABLE IF NOT EXISTS usuarios (
                 id SERIAL PRIMARY KEY,
                 nome TEXT NOT NULL,
@@ -95,7 +60,7 @@ def init_db():
         ''')
 
         # Tabela de clientes
-        db.execute('''
+        cur.execute('''
             CREATE TABLE IF NOT EXISTS clientes (
                 id SERIAL PRIMARY KEY,
                 nome TEXT NOT NULL,
@@ -114,7 +79,7 @@ def init_db():
         ''')
 
         # Tabela de cobranças
-        db.execute('''
+        cur.execute('''
             CREATE TABLE IF NOT EXISTS cobrancas (
                 id SERIAL PRIMARY KEY,
                 cliente_id INTEGER NOT NULL,
@@ -139,7 +104,7 @@ def init_db():
         ''')
 
         # Tabela de histórico de pagamentos
-        db.execute('''
+        cur.execute('''
             CREATE TABLE IF NOT EXISTS historico_pagamentos (
                 id SERIAL PRIMARY KEY,
                 cobranca_id INTEGER NOT NULL,
@@ -156,7 +121,7 @@ def init_db():
         ''')
 
         # Tabela de notificações enviadas
-        db.execute('''
+        cur.execute('''
             CREATE TABLE IF NOT EXISTS notificacoes (
                 id SERIAL PRIMARY KEY,
                 cliente_id INTEGER NOT NULL,
@@ -170,8 +135,9 @@ def init_db():
             )
         ''')
 
+
         # Tabela de configurações do sistema
-        db.execute('''
+        cur.execute('''
             CREATE TABLE IF NOT EXISTS configuracoes (
                 id SERIAL PRIMARY KEY,
                 chave TEXT UNIQUE NOT NULL,
@@ -189,25 +155,27 @@ def init_db():
             ('dias_aviso_vencimento', '3', 'Dias antes do vencimento para enviar aviso'),
         ]
         for chave, valor, descricao in default_configs:
-            db.execute('''
+            cur.execute('''
                 INSERT INTO configuracoes (chave, valor, descricao)
                 VALUES (%s, %s, %s)
                 ON CONFLICT (chave) DO NOTHING
             ''', (chave, valor, descricao))
 
-        db.commit()
+        conn.commit()
 
         # Criar usuário admin padrão se não existir
-        admin_exists = db.execute('SELECT id FROM usuarios WHERE email = %s', ('admin@sistema.com',)).fetchone()
+        cur.execute('SELECT id FROM usuarios WHERE email = %s', ('admin@sistema.com',))
+        admin_exists = cur.fetchone()
         if not admin_exists:
             admin_senha_hash = generate_password_hash('admin123')
-            db.execute(
+            cur.execute(
                 'INSERT INTO usuarios (nome, email, senha, tipo) VALUES (%s, %s, %s, %s)',
                 ('Administrador', 'admin@sistema.com', admin_senha_hash, 'admin')
             )
-            db.commit()
+            conn.commit()
 
-        db.close()
+        cur.close()
+        conn.close()
 
 # --- Decoradores de Autenticação ---
 def login_required(f):
@@ -247,10 +215,13 @@ def calcular_valor_atualizado(cobranca):
             dias_atraso = (hoje - data_venc).days
             
             # Buscar configurações
-            db = get_db()
-            config_rows = db.execute('SELECT chave, valor FROM configuracoes').fetchall()
+            conn = get_db()
+            cur = conn.cursor(row_factory=dict_row)
+            cur.execute('SELECT chave, valor FROM configuracoes')
+            config_rows = cur.fetchall()
             config = {row['chave']: row['valor'] for row in config_rows}
-            db.close()
+            cur.close()
+            conn.close()
             
             dias_tolerancia = int(config.get('dias_tolerancia', 3))
             
@@ -299,9 +270,12 @@ def login():
         email = request.form['email']
         senha = request.form['senha']
         
-        db = get_db()
-        usuario = db.execute('SELECT * FROM usuarios WHERE email = ?', (email,)).fetchone()
-        db.close()
+        conn = get_db()
+        cur = conn.cursor(row_factory=dict_row)
+        cur.execute('SELECT * FROM usuarios WHERE email = %s', (email,))
+        usuario = cur.fetchone()
+        cur.close()
+        conn.close()
         
         if usuario and check_password_hash(usuario['senha'], senha):
             session['usuario_id'] = usuario['id']
@@ -325,26 +299,43 @@ def logout():
 @login_required
 def index():
     """Renderiza o dashboard com estatísticas e lista de cobranças."""
-    db = get_db()
+    conn = get_db()
+    cur = conn.cursor(row_factory=dict_row)
     
     # Estatísticas gerais
+    cur.execute('SELECT COUNT(*) as count FROM clientes')
+    total_clientes = cur.fetchone()['count']
+    
+    cur.execute("SELECT COUNT(*) as count FROM cobrancas WHERE status = 'Pendente'")
+    cobrancas_pendentes = cur.fetchone()['count']
+    
+    cur.execute("SELECT COUNT(*) as count FROM cobrancas WHERE status = 'Pendente' AND data_vencimento < CURRENT_DATE")
+    cobrancas_vencidas = cur.fetchone()['count']
+    
+    cur.execute("SELECT COALESCE(SUM(valor_original), 0) as total FROM cobrancas WHERE status = 'Pendente'")
+    valor_total_pendente = cur.fetchone()['total']
+    
+    cur.execute("SELECT COALESCE(SUM(valor_pago), 0) as total FROM cobrancas WHERE status = 'Pago'")
+    valor_total_recebido = cur.fetchone()['total']
+    
     stats = {
-        'total_clientes': db.execute('SELECT COUNT(*) as count FROM clientes').fetchone()['count'],
-        'cobrancas_pendentes': db.execute("SELECT COUNT(*) as count FROM cobrancas WHERE status = 'Pendente'").fetchone()['count'],
-        'cobrancas_vencidas': db.execute("SELECT COUNT(*) as count FROM cobrancas WHERE status = 'Pendente' AND data_vencimento < CURRENT_DATE").fetchone()['count'],
-        'valor_total_pendente': db.execute("SELECT COALESCE(SUM(valor_original), 0) as total FROM cobrancas WHERE status = 'Pendente'").fetchone()['total'],
-        'valor_total_recebido': db.execute("SELECT COALESCE(SUM(valor_pago), 0) as total FROM cobrancas WHERE status = 'Pago'").fetchone()['total'],
+        'total_clientes': total_clientes,
+        'cobrancas_pendentes': cobrancas_pendentes,
+        'cobrancas_vencidas': cobrancas_vencidas,
+        'valor_total_pendente': valor_total_pendente,
+        'valor_total_recebido': valor_total_recebido,
     }
     
     # Cobranças recentes com informações do cliente
-    cobrancas = db.execute('''
+    cur.execute('''
         SELECT c.*, cl.nome as cliente_nome, cl.telefone, cl.email 
         FROM cobrancas c
         JOIN clientes cl ON c.cliente_id = cl.id
         WHERE c.status <> 'Pago'
         ORDER BY c.data_vencimento ASC
         LIMIT 20
-    ''').fetchall()
+    ''')
+    cobrancas = cur.fetchall()
     
     # Calcular valores atualizados para cada cobrança
     cobrancas_atualizadas = []
@@ -354,7 +345,8 @@ def index():
         cobranca_dict.update(valores)
         cobrancas_atualizadas.append(cobranca_dict)
     
-    db.close()
+    cur.close()
+    conn.close()
     
     return render_template('index.html', 
                          stats=stats, 
@@ -366,8 +358,9 @@ def index():
 @login_required
 def listar_clientes():
     """Lista todos os clientes cadastrados."""
-    db = get_db()
-    clientes = db.execute('''
+    conn = get_db()
+    cur = conn.cursor(row_factory=dict_row)
+    cur.execute('''
         SELECT 
             c.*,
             COALESCE(agg.total_cobrancas, 0) AS total_cobrancas,
@@ -384,8 +377,10 @@ def listar_clientes():
             GROUP BY cliente_id
         ) agg ON agg.cliente_id = c.id
         ORDER BY c.nome ASC
-    ''').fetchall()
-    db.close()
+    ''')
+    clientes = cur.fetchall()
+    cur.close()
+    conn.close()
     
     return render_template('clientes.html', clientes=clientes)
 
@@ -412,20 +407,22 @@ def adicionar_cliente():
             flash('CPF/CNPJ inválido.', 'danger')
             return render_template('cliente_form.html', cliente=dados)
         
-        db = get_db()
+        conn = get_db()
+        cur = conn.cursor()
         try:
-            db.execute('''
+            cur.execute('''
                 INSERT INTO clientes (nome, cpf_cnpj, email, telefone, telefone_secundario, 
                                     endereco, cidade, estado, cep, observacoes)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             ''', tuple(dados.values()))
-            db.commit()
+            conn.commit()
             flash('Cliente adicionado com sucesso!', 'success')
             return redirect(url_for('listar_clientes'))
         except UniqueViolation:
             flash('CPF/CNPJ já cadastrado.', 'danger')
         finally:
-            db.close()
+            cur.close()
+            conn.close()
     
     return render_template('cliente_form.html', cliente=None)
 
@@ -433,87 +430,53 @@ def adicionar_cliente():
 @login_required
 def visualizar_cliente(cliente_id):
     """Visualiza detalhes de um cliente específico."""
-    db = get_db()
+    conn = get_db()
+    cur = conn.cursor(row_factory=dict_row)
     
-    cliente = db.execute('SELECT * FROM clientes WHERE id = ?', (cliente_id,)).fetchone()
+    cur.execute('SELECT * FROM clientes WHERE id = %s', (cliente_id,))
+    cliente = cur.fetchone()
     if not cliente:
         flash('Cliente não encontrado.', 'danger')
+        cur.close()
+        conn.close()
         return redirect(url_for('listar_clientes'))
     
     # Cobranças do cliente
-    cobrancas = db.execute('''
+    cur.execute('''
         SELECT * FROM cobrancas 
-        WHERE cliente_id = ? 
+        WHERE cliente_id = %s 
         ORDER BY data_vencimento DESC
-    ''', (cliente_id,)).fetchall()
+    ''', (cliente_id,))
+    cobrancas = cur.fetchall()
     
     # Histórico de pagamentos
-    historico = db.execute('''
+    cur.execute('''
         SELECT h.*, c.descricao as cobranca_descricao
         FROM historico_pagamentos h
         JOIN cobrancas c ON h.cobranca_id = c.id
-        WHERE h.cliente_id = ?
+        WHERE h.cliente_id = %s
         ORDER BY h.data_pagamento DESC
-    ''', (cliente_id,)).fetchall()
+    ''', (cliente_id,))
+    historico = cur.fetchall()
     
-    db.close()
+    cur.close()
+    conn.close()
     
     return render_template('cliente_detalhes.html', 
                          cliente=cliente, 
                          cobrancas=cobrancas,
                          historico=historico)
 
-@app.route('/cliente/<int:cliente_id>/editar', methods=['GET', 'POST'])
-@login_required
-def editar_cliente(cliente_id):
-    """Edita informações de um cliente."""
-    db = get_db()
-    cliente = db.execute('SELECT * FROM clientes WHERE id = ?', (cliente_id,)).fetchone()
-    
-    if not cliente:
-        flash('Cliente não encontrado.', 'danger')
-        return redirect(url_for('listar_clientes'))
-    
-    if request.method == 'POST':
-        dados = {
-            'nome': request.form['nome'],
-            'cpf_cnpj': request.form.get('cpf_cnpj', ''),
-            'email': request.form.get('email', ''),
-            'telefone': request.form['telefone'],
-            'telefone_secundario': request.form.get('telefone_secundario', ''),
-            'endereco': request.form.get('endereco', ''),
-            'cidade': request.form.get('cidade', ''),
-            'estado': request.form.get('estado', ''),
-            'cep': request.form.get('cep', ''),
-            'observacoes': request.form.get('observacoes', '')
-        }
-        
-        try:
-            db.execute('''
-                UPDATE clientes SET 
-                    nome = ?, cpf_cnpj = ?, email = ?, telefone = ?, 
-                    telefone_secundario = ?, endereco = ?, cidade = ?, 
-                    estado = ?, cep = ?, observacoes = ?, 
-                    atualizado_em = CURRENT_TIMESTAMP
-                WHERE id = ?
-            ''', (*dados.values(), cliente_id))
-            db.commit()
-            flash('Cliente atualizado com sucesso!', 'success')
-            return redirect(url_for('visualizar_cliente', cliente_id=cliente_id))
-        except UniqueViolation:
-            flash('CPF/CNPJ já cadastrado para outro cliente.', 'danger')
-        finally:
-            db.close()
-    
-    return render_template('cliente_form.html', cliente=dict(cliente))
-
-# --- Rotas de Cobranças ---
 @app.route('/cobranca/adicionar', methods=['GET', 'POST'])
 @login_required
 def adicionar_cobranca():
     """Adiciona uma nova cobrança."""
-    db = get_db()
-    clientes = db.execute('SELECT id, nome FROM clientes ORDER BY nome').fetchall()
+    conn = get_db()
+    cur = conn.cursor(row_factory=dict_row)
+    cur.execute('SELECT id, nome FROM clientes ORDER BY nome')
+    clientes = cur.fetchall()
+    cur.close()
+    conn.close()
     
     if request.method == 'POST':
         dados = {
@@ -525,6 +488,9 @@ def adicionar_cobranca():
             'numero_parcelas': int(request.form.get('numero_parcelas', 1))
         }
         
+        conn = get_db()
+        cur = conn.cursor()
+        
         # Criar cobrança(s)
         if dados['tipo_cobranca'] == 'Parcelada' and dados['numero_parcelas'] > 1:
             # Criar múltiplas cobranças para parcelamento
@@ -533,10 +499,10 @@ def adicionar_cobranca():
             
             for i in range(dados['numero_parcelas']):
                 data_venc = data_base + timedelta(days=30 * i)
-                db.execute('''
+                cur.execute('''
                     INSERT INTO cobrancas (cliente_id, descricao, valor_original, data_vencimento, 
                                          tipo_cobranca, numero_parcelas, parcela_atual)
-                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s)
                 ''', (dados['cliente_id'], 
                      f"{dados['descricao']} - Parcela {i+1}/{dados['numero_parcelas']}", 
                      valor_parcela, 
@@ -546,285 +512,267 @@ def adicionar_cobranca():
                      i+1))
         else:
             # Cobrança única
-            db.execute('''
+            cur.execute('''
                 INSERT INTO cobrancas (cliente_id, descricao, valor_original, data_vencimento, tipo_cobranca)
-                VALUES (?, ?, ?, ?, ?)
+                VALUES (%s, %s, %s, %s, %s)
             ''', (dados['cliente_id'], dados['descricao'], dados['valor_original'], 
                  dados['data_vencimento'], 'Única'))
         
-        db.commit()
-        db.close()
+        conn.commit()
+        cur.close()
+        conn.close()
         flash('Cobrança(s) adicionada(s) com sucesso!', 'success')
         return redirect(url_for('index'))
     
-    db.close()
     return render_template('cobranca_form.html', clientes=clientes, cobranca=None)
-
-@app.route('/cobranca/<int:cobranca_id>/pagar', methods=['POST'])
-@login_required
-def registrar_pagamento(cobranca_id):
-    """Registra o pagamento de uma cobrança."""
-    db = get_db()
-    cobranca = db.execute('SELECT * FROM cobrancas WHERE id = ?', (cobranca_id,)).fetchone()
-    
-    if not cobranca:
-        flash('Cobrança não encontrada.', 'danger')
-        return redirect(url_for('index'))
-    
-    valor_pago = float(request.form['valor_pago'])
-    forma_pagamento = request.form['forma_pagamento']
-    observacoes = request.form.get('observacoes', '')
-    
-    # Atualizar cobrança
-    valores_atualizados = calcular_valor_atualizado(dict(cobranca))
-    valor_total = valores_atualizados['valor_total']
-    
-    # Se o valor pago for maior ou igual ao total, marcar como pago
-    if valor_pago >= valor_total:
-        status = 'Pago'
-        data_pagamento = datetime.now().strftime('%Y-%m-%d')
-    else:
-        status = 'Parcialmente Pago'
-        data_pagamento = None
-    
-    db.execute('''
-        UPDATE cobrancas SET 
-            valor_pago = valor_pago + ?,
-            multa = ?,
-            juros = ?,
-            valor_total = ?,
-            status = ?,
-            data_pagamento = ?,
-            forma_pagamento = ?,
-            atualizado_em = CURRENT_TIMESTAMP
-        WHERE id = ?
-    ''', (valor_pago, valores_atualizados['multa'], valores_atualizados['juros'], 
-         valor_total, status, data_pagamento, forma_pagamento, cobranca_id))
-    
-    # Registrar no histórico
-    db.execute('''
-        INSERT INTO historico_pagamentos (cobranca_id, cliente_id, valor_pago, 
-                                         forma_pagamento, observacoes, usuario_id)
-        VALUES (?, ?, ?, ?, ?, ?)
-    ''', (cobranca_id, cobranca['cliente_id'], valor_pago, forma_pagamento, 
-         observacoes, session['usuario_id']))
-    
-    db.commit()
-    db.close()
-    
-    flash('Pagamento registrado com sucesso!', 'success')
-    return redirect(request.referrer or url_for('index'))
 
 @app.route('/cobranca/<int:cobranca_id>/cancelar', methods=['POST'])
 @login_required
 def cancelar_cobranca(cobranca_id):
     """Cancela uma cobrança."""
-    db = get_db()
-    db.execute("UPDATE cobrancas SET status = 'Cancelada' WHERE id = ?", (cobranca_id,))
-    db.commit()
-    db.close()
+    conn = get_db()
+    cur = conn.cursor()
     
-    flash('Cobrança cancelada com sucesso!', 'info')
-    return redirect(request.referrer or url_for('index'))
+    # Verificar se a cobrança existe
+    cur.execute('SELECT id FROM cobrancas WHERE id = %s', (cobranca_id,))
+    cobranca = cur.fetchone()
+    if not cobranca:
+        flash('Cobrança não encontrada.', 'danger')
+        cur.close()
+        conn.close()
+        return redirect(url_for('index'))
+    
+    # Atualizar status para cancelada
+    cur.execute('''
+        UPDATE cobrancas 
+        SET status='Cancelada', atualizado_em=CURRENT_TIMESTAMP
+        WHERE id=%s
+    ''', (cobranca_id,))
+    
+    conn.commit()
+    cur.close()
+    conn.close()
+    flash('Cobrança cancelada com sucesso!', 'success')
+    return redirect(url_for('index'))
+
+@app.route('/cobranca/<int:cobranca_id>/pagar', methods=['POST'])
+@login_required
+def pagar_cobranca(cobranca_id):
+    """Processa o pagamento de uma cobrança."""
+    conn = get_db()
+    cur = conn.cursor(row_factory=dict_row)
+    
+    # Buscar cobrança
+    cur.execute('SELECT * FROM cobrancas WHERE id = %s', (cobranca_id,))
+    cobranca = cur.fetchone()
+    if not cobranca:
+        flash('Cobrança não encontrada.', 'danger')
+        cur.close()
+        conn.close()
+        return redirect(url_for('index'))
+    
+    # Obter dados do formulário
+    valor_pago = float(request.form.get('valor_pago', cobranca['valor_original']))
+    forma_pagamento = request.form.get('forma_pagamento', 'Dinheiro')
+    observacoes = request.form.get('observacoes', '')
+    
+    # Calcular valores atualizados
+    valores = calcular_valor_atualizado(dict(cobranca))
+    valor_total = valores['valor_total']
+    
+    # Verificar se o valor pago é suficiente
+    if valor_pago < valor_total:
+        flash(f'Valor insuficiente. Valor total: R$ {valor_total:.2f}', 'warning')
+        cur.close()
+        conn.close()
+        return redirect(url_for('index'))
+    
+    # Atualizar cobrança
+    cur.execute('''
+        UPDATE cobrancas 
+        SET status='Pago', valor_pago=%s, forma_pagamento=%s, 
+            data_pagamento=CURRENT_DATE, atualizado_em=CURRENT_TIMESTAMP
+        WHERE id=%s
+    ''', (valor_pago, forma_pagamento, cobranca_id))
+    
+    # Registrar no histórico de pagamentos
+    cur.execute('''
+        INSERT INTO historico_pagamentos (cobranca_id, cliente_id, valor_pago, forma_pagamento, observacoes, usuario_id)
+        VALUES (%s, %s, %s, %s, %s, %s)
+    ''', (cobranca_id, cobranca['cliente_id'], valor_pago, forma_pagamento, observacoes, session.get('usuario_id')))
+    
+    conn.commit()
+    cur.close()
+    conn.close()
+    flash('Pagamento registrado com sucesso!', 'success')
+    return redirect(url_for('index'))
+
 
 # --- Rotas de Relatórios ---
 @app.route('/relatorios')
 @login_required
 def relatorios():
-    """Exibe página de relatórios."""
-    db = get_db()
+    """Exibe relatórios do sistema."""
+    conn = get_db()
+    cur = conn.cursor(row_factory=dict_row)
     
-    # Relatório mensal
-    relatorio_mensal = db.execute("""
-        SELECT 
-            to_char(data_vencimento, 'YYYY-MM') AS mes,
-            COUNT(*) AS total_cobrancas,
-            SUM(CASE WHEN status = 'Pago' THEN 1 ELSE 0 END) AS cobrancas_pagas,
-            SUM(CASE WHEN status = 'Pago' THEN valor_pago ELSE 0 END) AS valor_recebido,
-            SUM(CASE WHEN status = 'Pendente' THEN valor_original ELSE 0 END) AS valor_pendente
-        FROM cobrancas
-        WHERE data_vencimento >= (CURRENT_DATE - INTERVAL '12 months')
-        GROUP BY mes
-        ORDER BY mes DESC
-    """).fetchall()
+    # Estatísticas para relatórios
+    cur.execute('SELECT COUNT(*) as count FROM clientes')
+    total_clientes = cur.fetchone()['count']
     
-    # Top clientes devedores
-    top_devedores = db.execute('''
-        SELECT cl.nome, cl.telefone, 
-               COUNT(co.id) as total_cobrancas,
-               SUM(co.valor_original) as valor_total
-        FROM clientes cl
-        JOIN cobrancas co ON cl.id = co.cliente_id
-        WHERE co.status = 'Pendente'
-        GROUP BY cl.id
-        ORDER BY valor_total DESC
-        LIMIT 10
-    ''').fetchall()
+    cur.execute("SELECT COUNT(*) as count FROM cobrancas WHERE status = 'Pendente'")
+    cobrancas_pendentes = cur.fetchone()['count']
     
-    db.close()
+    cur.execute("SELECT COUNT(*) as count FROM cobrancas WHERE status = 'Pago'")
+    cobrancas_pagas = cur.fetchone()['count']
     
-    return render_template('relatorios.html', 
-                         relatorio_mensal=relatorio_mensal,
-                         top_devedores=top_devedores)
+    cur.execute("SELECT COALESCE(SUM(valor_original), 0) as total FROM cobrancas WHERE status = 'Pendente'")
+    valor_pendente = cur.fetchone()['total']
+    
+    cur.execute("SELECT COALESCE(SUM(valor_original), 0) as total FROM cobrancas WHERE status = 'Pago'")
+    valor_recebido = cur.fetchone()['total']
+    
+    stats = {
+        'total_clientes': total_clientes,
+        'cobrancas_pendentes': cobrancas_pendentes,
+        'cobrancas_pagas': cobrancas_pagas,
+        'valor_pendente': valor_pendente,
+        'valor_recebido': valor_recebido
+    }
+    
+    cur.close()
+    conn.close()
+    
+    return render_template('relatorios.html', stats=stats)
 
-# --- Rotas de Administração ---
-@app.route('/admin/usuarios')
+# --- Rotas de Usuários ---
+@app.route('/usuarios')
+@login_required
 @admin_required
 def listar_usuarios():
     """Lista todos os usuários do sistema."""
-    db = get_db()
-    usuarios = db.execute('SELECT * FROM usuarios ORDER BY nome').fetchall()
-    db.close()
+    conn = get_db()
+    cur = conn.cursor(row_factory=dict_row)
+    cur.execute('SELECT * FROM usuarios ORDER BY nome')
+    usuarios = cur.fetchall()
+    cur.close()
+    conn.close()
     
     return render_template('usuarios.html', usuarios=usuarios)
 
-@app.route('/admin/usuario/adicionar', methods=['GET', 'POST'])
+@app.route('/usuario/adicionar', methods=['GET', 'POST'])
+@login_required
 @admin_required
 def adicionar_usuario():
-    """Adiciona um novo usuário ao sistema."""
+    """Adiciona um novo usuário."""
     if request.method == 'POST':
-        nome = request.form['nome']
-        email = request.form['email']
-        senha = request.form['senha']
-        tipo = request.form['tipo']
+        dados = {
+            'nome': request.form['nome'],
+            'email': request.form['email'],
+            'senha': request.form['senha'],
+            'tipo': request.form.get('tipo', 'operador')
+        }
         
-        senha_hash = generate_password_hash(senha)
-        
-        db = get_db()
+        conn = get_db()
+        cur = conn.cursor()
         try:
-            db.execute('''
-                INSERT INTO usuarios (nome, email, senha, tipo)
-                VALUES (?, ?, ?, ?)
-            ''', (nome, email, senha_hash, tipo))
-            db.commit()
+            senha_hash = generate_password_hash(dados['senha'])
+            cur.execute(
+                'INSERT INTO usuarios (nome, email, senha, tipo) VALUES (%s, %s, %s, %s)',
+                (dados['nome'], dados['email'], senha_hash, dados['tipo'])
+            )
+            conn.commit()
             flash('Usuário adicionado com sucesso!', 'success')
             return redirect(url_for('listar_usuarios'))
         except UniqueViolation:
             flash('Email já cadastrado.', 'danger')
         finally:
-            db.close()
+            cur.close()
+            conn.close()
     
     return render_template('usuario_form.html', usuario=None)
 
-@app.route('/admin/usuario/<int:usuario_id>/editar', methods=['GET', 'POST'])
+@app.route('/usuario/<int:usuario_id>', methods=['GET', 'POST'])
+@login_required
 @admin_required
 def editar_usuario(usuario_id):
-    """Edita informações de um usuário."""
-    db = get_db()
-    usuario = db.execute('SELECT * FROM usuarios WHERE id = ?', (usuario_id,)).fetchone()
+    """Edita um usuário existente."""
+    conn = get_db()
+    cur = conn.cursor(row_factory=dict_row)
     
+    cur.execute('SELECT * FROM usuarios WHERE id = %s', (usuario_id,))
+    usuario = cur.fetchone()
     if not usuario:
         flash('Usuário não encontrado.', 'danger')
+        cur.close()
+        conn.close()
         return redirect(url_for('listar_usuarios'))
     
     if request.method == 'POST':
-        nome = request.form['nome']
-        email = request.form['email']
-        senha = request.form.get('senha', '')
-        tipo = request.form['tipo']
+        dados = {
+            'nome': request.form['nome'],
+            'email': request.form['email'],
+            'tipo': request.form.get('tipo', 'operador')
+        }
         
-        try:
-            if senha:
-                # Atualizar com nova senha
-                senha_hash = generate_password_hash(senha)
-                db.execute('''
-                    UPDATE usuarios SET nome = ?, email = ?, senha = ?, tipo = ?
-                    WHERE id = ?
-                ''', (nome, email, senha_hash, tipo, usuario_id))
-            else:
-                # Manter senha atual
-                db.execute('''
-                    UPDATE usuarios SET nome = ?, email = ?, tipo = ?
-                    WHERE id = ?
-                ''', (nome, email, tipo, usuario_id))
-            
-            db.commit()
-            flash('Usuário atualizado com sucesso!', 'success')
-            return redirect(url_for('listar_usuarios'))
-        except UniqueViolation:
-            flash('Email já cadastrado para outro usuário.', 'danger')
-        finally:
-            db.close()
-    
-    return render_template('usuario_form.html', usuario=dict(usuario))
-
-@app.route('/admin/usuario/<int:usuario_id>/deletar', methods=['POST'])
-@admin_required
-def deletar_usuario(usuario_id):
-    """Deleta um usuário do sistema."""
-    if usuario_id == session.get('usuario_id'):
-        flash('Você não pode deletar seu próprio usuário.', 'danger')
+        # Se uma nova senha foi fornecida
+        if request.form.get('senha'):
+            dados['senha'] = generate_password_hash(request.form['senha'])
+            cur.execute(
+                'UPDATE usuarios SET nome=%s, email=%s, senha=%s, tipo=%s WHERE id=%s',
+                (dados['nome'], dados['email'], dados['senha'], dados['tipo'], usuario_id)
+            )
+        else:
+            cur.execute(
+                'UPDATE usuarios SET nome=%s, email=%s, tipo=%s WHERE id=%s',
+                (dados['nome'], dados['email'], dados['tipo'], usuario_id)
+            )
+        
+        conn.commit()
+        cur.close()
+        conn.close()
+        flash('Usuário atualizado com sucesso!', 'success')
         return redirect(url_for('listar_usuarios'))
     
-    db = get_db()
-    db.execute('DELETE FROM usuarios WHERE id = ?', (usuario_id,))
-    db.commit()
-    db.close()
-    
-    flash('Usuário deletado com sucesso!', 'info')
-    return redirect(url_for('listar_usuarios'))
+    cur.close()
+    conn.close()
+    return render_template('usuario_form.html', usuario=usuario)
 
-@app.route('/cliente/<int:cliente_id>/deletar', methods=['POST'])
+# --- Rotas de Configurações ---
+@app.route('/configuracoes')
 @login_required
-def deletar_cliente(cliente_id):
-    """Deleta um cliente e todas suas cobranças."""
-    db = get_db()
-    db.execute('DELETE FROM clientes WHERE id = ?', (cliente_id,))
-    db.commit()
-    db.close()
-    
-    flash('Cliente deletado com sucesso!', 'info')
-    return redirect(url_for('listar_clientes'))
-
-@app.route('/admin/configuracoes', methods=['GET', 'POST'])
 @admin_required
 def configuracoes():
-    """Gerencia as configurações do sistema."""
-    db = get_db()
+    """Exibe e permite editar as configurações do sistema."""
+    conn = get_db()
+    cur = conn.cursor(row_factory=dict_row)
     
     if request.method == 'POST':
-        for chave in request.form:
-            valor = request.form[chave]
-            db.execute('UPDATE configuracoes SET valor = ? WHERE chave = ?', (valor, chave))
-        db.commit()
+        # Atualizar configurações
+        configs = {
+            'taxa_juros_mensal': request.form.get('taxa_juros_mensal', '2.0'),
+            'taxa_multa': request.form.get('taxa_multa', '10.0'),
+            'dias_tolerancia': request.form.get('dias_tolerancia', '3'),
+            'envio_automatico': request.form.get('envio_automatico', 'false'),
+            'dias_aviso_vencimento': request.form.get('dias_aviso_vencimento', '3')
+        }
+        
+        for chave, valor in configs.items():
+            cur.execute(
+                'UPDATE configuracoes SET valor=%s WHERE chave=%s',
+                (valor, chave)
+            )
+        
+        conn.commit()
         flash('Configurações atualizadas com sucesso!', 'success')
     
-    configs = db.execute('SELECT * FROM configuracoes').fetchall()
-    db.close()
+    # Buscar configurações atuais
+    cur.execute('SELECT chave, valor, descricao FROM configuracoes ORDER BY chave')
+    configs = cur.fetchall()
+    cur.close()
+    conn.close()
     
     return render_template('configuracoes.html', configs=configs)
-
-# --- APIs para AJAX ---
-@app.route('/api/dashboard/stats')
-@login_required
-def api_dashboard_stats():
-    """Retorna estatísticas do dashboard em JSON."""
-    db = get_db()
-    
-    stats = {
-        'total_clientes': db.execute('SELECT COUNT(*) as count FROM clientes').fetchone()['count'],
-        'cobrancas_pendentes': db.execute("SELECT COUNT(*) as count FROM cobrancas WHERE status = 'Pendente'").fetchone()['count'],
-        'cobrancas_vencidas': db.execute("SELECT COUNT(*) as count FROM cobrancas WHERE status = 'Pendente' AND data_vencimento < CURRENT_DATE").fetchone()['count'],
-        'valor_total_pendente': db.execute("SELECT COALESCE(SUM(valor_original), 0) as total FROM cobrancas WHERE status = 'Pendente'").fetchone()['total'] or 0,
-        'valor_total_recebido': db.execute("SELECT COALESCE(SUM(valor_pago), 0) as total FROM cobrancas WHERE status = 'Pago'").fetchone()['total'] or 0,
-    }
-    
-    db.close()
-    return jsonify(stats)
-
-@app.route('/api/cliente/<int:cliente_id>/cobrancas')
-@login_required
-def api_cliente_cobrancas(cliente_id):
-    """Retorna as cobranças de um cliente em JSON."""
-    db = get_db()
-    cobrancas = db.execute('''
-        SELECT * FROM cobrancas 
-        WHERE cliente_id = ? 
-        ORDER BY data_vencimento DESC
-    ''', (cliente_id,)).fetchall()
-    db.close()
-    
-    return jsonify([dict(c) for c in cobrancas])
 
 # --- Execução da Aplicação ---
 if __name__ == '__main__':

@@ -13,9 +13,12 @@ from werkzeug.security import generate_password_hash
 def listar_usuarios():
     """Lista todos os usuários do sistema."""
     with app.app_context():
-        db = get_db()
-        usuarios = db.execute('SELECT id, nome, email, tipo, criado_em FROM usuarios ORDER BY nome').fetchall()
-        db.close()
+        conn = get_db()
+        cur = conn.cursor(row_factory=dict_row)
+        cur.execute('SELECT id, nome, email, tipo, criado_em FROM usuarios ORDER BY nome')
+        usuarios = cur.fetchall()
+        cur.close()
+        conn.close()
         
         if not usuarios:
             print("❌ Nenhum usuário encontrado.")
@@ -61,23 +64,27 @@ def criar_usuario():
         return
     
     with app.app_context():
-        db = get_db()
+        conn = get_db()
+        cur = conn.cursor()
         
         # Verificar se email já existe
-        existe = db.execute('SELECT id FROM usuarios WHERE email = %s', (email,)).fetchone()
+        cur.execute('SELECT id FROM usuarios WHERE email = %s', (email,))
+        existe = cur.fetchone()
         if existe:
             print("❌ Email já cadastrado.")
-            db.close()
+            cur.close()
+            conn.close()
             return
         
         # Criar usuário
         senha_hash = generate_password_hash(senha)
-        db.execute(
+        cur.execute(
             'INSERT INTO usuarios (nome, email, senha, tipo) VALUES (%s, %s, %s, %s)',
             (nome, email, senha_hash, tipo)
         )
-        db.commit()
-        db.close()
+        conn.commit()
+        cur.close()
+        conn.close()
         
         print(f"✅ Usuário {nome} criado com sucesso!")
 
@@ -91,13 +98,16 @@ def alterar_senha():
         return
     
     with app.app_context():
-        db = get_db()
+        conn = get_db()
+        cur = conn.cursor(row_factory=dict_row)
         
         # Verificar se usuário existe
-        usuario = db.execute('SELECT id, nome FROM usuarios WHERE email = %s', (email,)).fetchone()
+        cur.execute('SELECT id, nome FROM usuarios WHERE email = %s', (email,))
+        usuario = cur.fetchone()
         if not usuario:
             print("❌ Usuário não encontrado.")
-            db.close()
+            cur.close()
+            conn.close()
             return
         
         print(f"Usuário encontrado: {usuario['nome']}")
@@ -105,20 +115,23 @@ def alterar_senha():
         nova_senha = getpass.getpass("Nova senha: ")
         if not nova_senha:
             print("❌ Senha é obrigatória.")
-            db.close()
+            cur.close()
+            conn.close()
             return
         
         confirmar_senha = getpass.getpass("Confirmar nova senha: ")
         if nova_senha != confirmar_senha:
             print("❌ Senhas não coincidem.")
-            db.close()
+            cur.close()
+            conn.close()
             return
         
         # Atualizar senha
         senha_hash = generate_password_hash(nova_senha)
-        db.execute('UPDATE usuarios SET senha = %s WHERE email = %s', (senha_hash, email))
-        db.commit()
-        db.close()
+        cur.execute('UPDATE usuarios SET senha = %s WHERE email = %s', (senha_hash, email))
+        conn.commit()
+        cur.close()
+        conn.close()
         
         print(f"✅ Senha alterada com sucesso para {usuario['nome']}!")
 

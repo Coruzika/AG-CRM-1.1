@@ -97,6 +97,7 @@ def main():
             print("   - usuarios")
             print("   - clientes") 
             print("   - cobrancas")
+            print("   - dividas")
             print("   - historico_pagamentos")
             print("   - notificacoes")
             print("   - configuracoes")
