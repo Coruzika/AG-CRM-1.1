@@ -21,7 +21,8 @@ except ImportError:
 
 # Inicializa a aplicação Flask
 app = Flask(__name__)
-app.secret_key = secrets.token_hex(16)  # Chave secreta para sessões
+# Usa SECRET_KEY do ambiente em produção; gera uma chave temporária caso não definida
+app.secret_key = os.getenv('SECRET_KEY', secrets.token_hex(16))  # Chave secreta para sessões
 
 # --- Configuração e Inicialização do Banco de Dados ---
 DATABASE_URL = os.getenv('DATABASE_URL')
@@ -68,7 +69,12 @@ def get_db():
     """Abre uma nova conexão com o banco de dados PostgreSQL."""
     if not DATABASE_URL:
         raise RuntimeError('DATABASE_URL não configurada. Defina a variável de ambiente para conectar ao PostgreSQL.')
-    conn = psycopg.connect(DATABASE_URL)
+    # Em ambientes gerenciados (ex.: Render), forçar SSL se não especificado
+    db_url = DATABASE_URL
+    if 'sslmode=' not in db_url and 'localhost' not in db_url and '127.0.0.1' not in db_url:
+        separator = '&' if '?' in db_url else '?'
+        db_url = f"{db_url}{separator}sslmode=require"
+    conn = psycopg.connect(db_url)
     return DBConnection(conn)
 
 def init_db():
@@ -824,7 +830,7 @@ if __name__ == '__main__':
         print("Exemplo: export DATABASE_URL='postgresql://usuario:senha@localhost:5432/crm_db'")
         print("\nOu execute primeiro: python init_db.py")
         sys.exit(1)
-    
+
     try:
         init_db()  # Inicializa o banco na primeira execução
         print("✅ Banco de dados inicializado com sucesso!")
@@ -832,6 +838,7 @@ if __name__ == '__main__':
         print(f"❌ Erro ao inicializar banco de dados: {e}")
         print("Execute primeiro: python init_db.py")
         sys.exit(1)
-    
+
     print("🚀 Iniciando aplicação Flask...")
-    app.run(debug=True)
+    port = int(os.environ.get("PORT", 5000))  # Pega a porta do ambiente ou usa 5000 como padrão
+    app.run(host='0.0.0.0', port=port, debug=False)
