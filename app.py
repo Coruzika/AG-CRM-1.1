@@ -235,7 +235,12 @@ def admin_required(f):
 def calcular_valor_atualizado(cobranca):
     """Calcula o valor atualizado de uma cobrança com juros e multa."""
     if cobranca['status'] != 'Pago' and cobranca['data_vencimento']:
-        data_venc = datetime.strptime(cobranca['data_vencimento'], '%Y-%m-%d')
+        # Handle both string and date object formats
+        if isinstance(cobranca['data_vencimento'], str):
+            data_venc = datetime.strptime(cobranca['data_vencimento'], '%Y-%m-%d')
+        else:
+            # It's already a date object, convert to datetime
+            data_venc = datetime.combine(cobranca['data_vencimento'], datetime.min.time())
         hoje = datetime.now()
         
         if hoje > data_venc:
@@ -841,4 +846,4 @@ if __name__ == '__main__':
 
     print("🚀 Iniciando aplicação Flask...")
     port = int(os.environ.get("PORT", 5000))  # Pega a porta do ambiente ou usa 5000 como padrão
-    app.run(host='0.0.0.0', port=port, debug=False)
+    app.run(host='0.0.0.0', port=port, debug=True)

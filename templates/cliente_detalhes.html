@@ -300,7 +300,7 @@
                     <tr>
                         <td>{{ cobranca.descricao or 'Sem descrição' }}</td>
                         <td>R$ {{ "{:,.2f}".format(cobranca.valor_original).replace(',', 'X').replace('.', ',').replace('X', '.') }}</td>
-                        <td>{{ cobranca.data_vencimento.split('-')[2] }}/{{ cobranca.data_vencimento.split('-')[1] }}/{{ cobranca.data_vencimento.split('-')[0] }}</td>
+                        <td>{{ cobranca.data_vencimento.strftime('%d/%m/%Y') }}</td>
                         <td>
                             {% if cobranca.status == 'Pago' %}
                                 <span class="badge paid">Pago</span>
@@ -347,7 +347,7 @@
                 <tbody>
                     {% for pagamento in historico %}
                     <tr>
-                        <td>{{ pagamento.data_pagamento.split(' ')[0].split('-')[2] }}/{{ pagamento.data_pagamento.split(' ')[0].split('-')[1] }}/{{ pagamento.data_pagamento.split(' ')[0].split('-')[0] }}</td>
+                        <td>{{ pagamento.data_pagamento.strftime('%d/%m/%Y') }}</td>
                         <td>{{ pagamento.cobranca_descricao or 'Sem descrição' }}</td>
                         <td>R$ {{ "{:,.2f}".format(pagamento.valor_pago).replace(',', 'X').replace('.', ',').replace('X', '.') }}</td>
                         <td>{{ pagamento.forma_pagamento }}</td>
