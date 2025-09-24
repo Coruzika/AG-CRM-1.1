@@ -1,0 +1,297 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Usuários - Sistema de Cobrança</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        .header {
+            background: white;
+            padding: 20px 30px;
+            border-radius: 10px;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+            margin-bottom: 30px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .header h1 {
+            color: #333;
+            font-size: 28px;
+        }
+
+        .header-actions {
+            display: flex;
+            gap: 10px;
+        }
+
+        .btn {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            text-decoration: none;
+            display: inline-block;
+            font-size: 14px;
+            font-weight: 500;
+            transition: all 0.3s;
+        }
+
+        .btn-primary {
+            background: #667eea;
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: #5a67d8;
+            transform: translateY(-2px);
+        }
+
+        .btn-secondary {
+            background: #e2e8f0;
+            color: #4a5568;
+        }
+
+        .btn-secondary:hover {
+            background: #cbd5e0;
+        }
+
+        .table-container {
+            background: white;
+            border-radius: 10px;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+            overflow: hidden;
+        }
+
+        .table-header {
+            padding: 20px 25px;
+            background: #f7fafc;
+            border-bottom: 1px solid #e2e8f0;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .table-header h2 {
+            color: #333;
+            font-size: 20px;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        th, td {
+            padding: 15px 12px;
+            text-align: left;
+            border-bottom: 1px solid #e2e8f0;
+        }
+
+        th {
+            background: #f7fafc;
+            font-weight: 600;
+            color: #4a5568;
+        }
+
+        tr:hover {
+            background: #f7fafc;
+        }
+
+        .badge {
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 600;
+            display: inline-block;
+        }
+
+        .badge.admin {
+            background: #fed7d7;
+            color: #c53030;
+        }
+
+        .badge.operador {
+            background: #bee3f8;
+            color: #2c5282;
+        }
+
+        .table-actions {
+            display: flex;
+            gap: 5px;
+        }
+
+        .btn-sm {
+            padding: 5px 10px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 12px;
+            text-decoration: none;
+            display: inline-block;
+            transition: all 0.3s;
+        }
+
+        .btn-sm.edit {
+            background: #ed8936;
+            color: white;
+        }
+
+        .btn-sm.delete {
+            background: #f56565;
+            color: white;
+        }
+
+        .btn-sm:hover {
+            opacity: 0.8;
+            transform: translateY(-1px);
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 60px 20px;
+            color: #666;
+        }
+
+        .empty-state h3 {
+            margin-bottom: 10px;
+            color: #4a5568;
+        }
+
+        .empty-state p {
+            margin-bottom: 20px;
+        }
+
+        @media (max-width: 768px) {
+            .header {
+                flex-direction: column;
+                text-align: center;
+                gap: 15px;
+            }
+
+            table {
+                font-size: 14px;
+            }
+
+            th, td {
+                padding: 10px 8px;
+            }
+
+            .table-actions {
+                flex-direction: column;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>Gerenciar Usuários</h1>
+            <div class="header-actions">
+                <a href="{{ url_for('index') }}" class="btn btn-secondary">← Voltar</a>
+                <a href="{{ url_for('adicionar_usuario') }}" class="btn btn-primary">+ Novo Usuário</a>
+            </div>
+        </div>
+
+        <div class="table-container">
+            <div class="table-header">
+                <h2>Lista de Usuários</h2>
+                <div style="color: #666; font-size: 14px;">
+                    Total: <strong>{{ usuarios|length }}</strong> usuário{{ 's' if usuarios|length != 1 else '' }}
+                </div>
+            </div>
+
+            {% if usuarios %}
+            <table>
+                <thead>
+                    <tr>
+                        <th>Nome</th>
+                        <th>E-mail</th>
+                        <th>Tipo</th>
+                        <th>Data de Criação</th>
+                        <th>Ações</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for usuario in usuarios %}
+                    <tr>
+                        <td><strong>{{ usuario.nome }}</strong></td>
+                        <td>{{ usuario.email }}</td>
+                        <td>
+                            <span class="badge {{ usuario.tipo }}">
+                                {{ 'Administrador' if usuario.tipo == 'admin' else 'Operador' }}
+                            </span>
+                        </td>
+                        <td>
+                            {% if usuario.criado_em %}
+                                {{ usuario.criado_em.split(' ')[0].split('-')[2] }}/{{ usuario.criado_em.split(' ')[0].split('-')[1] }}/{{ usuario.criado_em.split(' ')[0].split('-')[0] }}
+                            {% else %}
+                                -
+                            {% endif %}
+                        </td>
+                        <td>
+                            <div class="table-actions">
+                                <a href="{{ url_for('editar_usuario', usuario_id=usuario.id) }}" class="btn-sm edit">Editar</a>
+                                {% if usuario.id != session.usuario_id %}
+                                <button onclick="confirmDelete({{ usuario.id }}, '{{ usuario.nome }}')" class="btn-sm delete">Excluir</button>
+                                {% endif %}
+                            </div>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            {% else %}
+            <div class="empty-state">
+                <h3>Nenhum usuário cadastrado</h3>
+                <p>Comece adicionando um novo usuário ao sistema.</p>
+                <a href="{{ url_for('adicionar_usuario') }}" class="btn btn-primary">+ Adicionar Usuário</a>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+
+    <script>
+        function confirmDelete(usuarioId, usuarioNome) {
+            if (confirm(`Tem certeza que deseja excluir o usuário "${usuarioNome}"?\n\nEsta ação não pode ser desfeita.`)) {
+                // Create form to delete usuario
+                const form = document.createElement('form');
+                form.method = 'POST';
+                form.action = `/admin/usuario/${usuarioId}/deletar`;
+                
+                // Add CSRF token if needed
+                const csrfToken = document.querySelector('meta[name="csrf-token"]');
+                if (csrfToken) {
+                    const tokenInput = document.createElement('input');
+                    tokenInput.type = 'hidden';
+                    tokenInput.name = 'csrf_token';
+                    tokenInput.value = csrfToken.getAttribute('content');
+                    form.appendChild(tokenInput);
+                }
+                
+                document.body.appendChild(form);
+                form.submit();
+            }
+        }
+    </script>
+</body>
+</html>

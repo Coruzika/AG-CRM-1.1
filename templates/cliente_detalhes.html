@@ -1,0 +1,426 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ cliente.nome }} - Sistema de Cobrança</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+
+        .header {
+            background: white;
+            padding: 20px 30px;
+            border-radius: 10px;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+            margin-bottom: 30px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .header h1 {
+            color: #333;
+            font-size: 28px;
+        }
+
+        .header-actions {
+            display: flex;
+            gap: 10px;
+        }
+
+        .btn {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            text-decoration: none;
+            display: inline-block;
+            font-size: 14px;
+            font-weight: 500;
+            transition: all 0.3s;
+        }
+
+        .btn-primary {
+            background: #667eea;
+            color: white;
+        }
+
+        .btn-secondary {
+            background: #e2e8f0;
+            color: #4a5568;
+        }
+
+        .btn:hover {
+            transform: translateY(-2px);
+        }
+
+        .info-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+
+        .info-card {
+            background: white;
+            padding: 25px;
+            border-radius: 10px;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+        }
+
+        .info-card h3 {
+            color: #333;
+            margin-bottom: 15px;
+            font-size: 18px;
+        }
+
+        .info-item {
+            margin-bottom: 10px;
+        }
+
+        .info-label {
+            font-weight: 600;
+            color: #4a5568;
+        }
+
+        .info-value {
+            color: #666;
+        }
+
+        .table-container {
+            background: white;
+            border-radius: 10px;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+            overflow: hidden;
+            margin-bottom: 30px;
+        }
+
+        .table-header {
+            padding: 20px 25px;
+            background: #f7fafc;
+            border-bottom: 1px solid #e2e8f0;
+        }
+
+        .table-header h2 {
+            color: #333;
+            font-size: 20px;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        th, td {
+            padding: 12px;
+            text-align: left;
+            border-bottom: 1px solid #e2e8f0;
+        }
+
+        th {
+            background: #f7fafc;
+            font-weight: 600;
+            color: #4a5568;
+        }
+
+        tr:hover {
+            background: #f7fafc;
+        }
+
+        .badge {
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 600;
+            display: inline-block;
+        }
+
+        .badge.pending {
+            background: #fed7d7;
+            color: #c53030;
+        }
+
+        .badge.paid {
+            background: #c6f6d5;
+            color: #22543d;
+        }
+
+        .badge.overdue {
+            background: #feebc8;
+            color: #7c2d12;
+        }
+
+        .btn-sm {
+            padding: 5px 10px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 12px;
+            text-decoration: none;
+            display: inline-block;
+            margin-right: 5px;
+        }
+
+        .btn-sm.pay {
+            background: #48bb78;
+            color: white;
+        }
+
+        .btn-sm.cancel {
+            background: #f56565;
+            color: white;
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 40px;
+            color: #666;
+        }
+
+        @media (max-width: 768px) {
+            .header {
+                flex-direction: column;
+                gap: 15px;
+            }
+
+            .info-grid {
+                grid-template-columns: 1fr;
+            }
+
+            table {
+                font-size: 14px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>{{ cliente.nome }}</h1>
+            <div class="header-actions">
+                <a href="{{ url_for('listar_clientes') }}" class="btn btn-secondary">← Voltar</a>
+                <a href="{{ url_for('editar_cliente', cliente_id=cliente.id) }}" class="btn btn-primary">Editar</a>
+            </div>
+        </div>
+
+        <div class="info-grid">
+            <div class="info-card">
+                <h3>Informações Pessoais</h3>
+                <div class="info-item">
+                    <span class="info-label">Nome:</span>
+                    <span class="info-value">{{ cliente.nome }}</span>
+                </div>
+                <div class="info-item">
+                    <span class="info-label">CPF/CNPJ:</span>
+                    <span class="info-value">{{ cliente.cpf_cnpj or 'Não informado' }}</span>
+                </div>
+                <div class="info-item">
+                    <span class="info-label">E-mail:</span>
+                    <span class="info-value">{{ cliente.email or 'Não informado' }}</span>
+                </div>
+            </div>
+
+            <div class="info-card">
+                <h3>Contato</h3>
+                <div class="info-item">
+                    <span class="info-label">Telefone:</span>
+                    <span class="info-value">{{ cliente.telefone or 'Não informado' }}</span>
+                </div>
+                <div class="info-item">
+                    <span class="info-label">Telefone Secundário:</span>
+                    <span class="info-value">{{ cliente.telefone_secundario or 'Não informado' }}</span>
+                </div>
+            </div>
+
+            <div class="info-card">
+                <h3>Endereço</h3>
+                <div class="info-item">
+                    <span class="info-label">Endereço:</span>
+                    <span class="info-value">{{ cliente.endereco or 'Não informado' }}</span>
+                </div>
+                <div class="info-item">
+                    <span class="info-label">Cidade/Estado:</span>
+                    <span class="info-value">
+                        {% if cliente.cidade or cliente.estado %}
+                            {% if cliente.cidade %}{{ cliente.cidade }}{% endif %}
+                            {% if cliente.cidade and cliente.estado %} - {% endif %}
+                            {% if cliente.estado %}{{ cliente.estado }}{% endif %}
+                        {% else %}
+                            Não informado
+                        {% endif %}
+                    </span>
+                </div>
+                <div class="info-item">
+                    <span class="info-label">CEP:</span>
+                    <span class="info-value">{{ cliente.cep or 'Não informado' }}</span>
+                </div>
+            </div>
+        </div>
+
+        {% if cliente.observacoes %}
+        <div class="info-card" style="margin-bottom: 30px;">
+            <h3>Observações</h3>
+            <p>{{ cliente.observacoes }}</p>
+        </div>
+        {% endif %}
+
+        <div class="table-container">
+            <div class="table-header">
+                <h2>Cobranças</h2>
+            </div>
+            {% if cobrancas %}
+            <table>
+                <thead>
+                    <tr>
+                        <th>Descrição</th>
+                        <th>Valor</th>
+                        <th>Vencimento</th>
+                        <th>Status</th>
+                        <th>Ações</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for cobranca in cobrancas %}
+                    <tr>
+                        <td>{{ cobranca.descricao or 'Sem descrição' }}</td>
+                        <td>R$ {{ "{:,.2f}".format(cobranca.valor_original).replace(',', 'X').replace('.', ',').replace('X', '.') }}</td>
+                        <td>{{ cobranca.data_vencimento.split('-')[2] }}/{{ cobranca.data_vencimento.split('-')[1] }}/{{ cobranca.data_vencimento.split('-')[0] }}</td>
+                        <td>
+                            {% if cobranca.status == 'Pago' %}
+                                <span class="badge paid">Pago</span>
+                            {% elif cobranca.status == 'Pendente' %}
+                                <span class="badge pending">Pendente</span>
+                            {% else %}
+                                <span class="badge overdue">{{ cobranca.status }}</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if cobranca.status != 'Pago' %}
+                            <button onclick="openPaymentModal({{ cobranca.id }}, '{{ cliente.nome }}', {{ cobranca.valor_original }})" class="btn-sm pay">Pagar</button>
+                            <form action="{{ url_for('cancelar_cobranca', cobranca_id=cobranca.id) }}" method="POST" style="display: inline;" onsubmit="return confirm('Deseja cancelar esta cobrança?');">
+                                <button type="submit" class="btn-sm cancel">Cancelar</button>
+                            </form>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            {% else %}
+            <div class="empty-state">
+                <p>Nenhuma cobrança encontrada para este cliente.</p>
+            </div>
+            {% endif %}
+        </div>
+
+        {% if historico %}
+        <div class="table-container">
+            <div class="table-header">
+                <h2>Histórico de Pagamentos</h2>
+            </div>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Data</th>
+                        <th>Cobrança</th>
+                        <th>Valor Pago</th>
+                        <th>Forma de Pagamento</th>
+                        <th>Observações</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for pagamento in historico %}
+                    <tr>
+                        <td>{{ pagamento.data_pagamento.split(' ')[0].split('-')[2] }}/{{ pagamento.data_pagamento.split(' ')[0].split('-')[1] }}/{{ pagamento.data_pagamento.split(' ')[0].split('-')[0] }}</td>
+                        <td>{{ pagamento.cobranca_descricao or 'Sem descrição' }}</td>
+                        <td>R$ {{ "{:,.2f}".format(pagamento.valor_pago).replace(',', 'X').replace('.', ',').replace('X', '.') }}</td>
+                        <td>{{ pagamento.forma_pagamento }}</td>
+                        <td>{{ pagamento.observacoes or '-' }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% endif %}
+    </div>
+
+    <!-- Modal Registrar Pagamento -->
+    <div id="pagamentoModal" class="modal" style="display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.5);">
+        <div class="modal-content" style="background-color: white; margin: 5% auto; padding: 30px; border-radius: 10px; width: 90%; max-width: 500px; box-shadow: 0 5px 25px rgba(0,0,0,0.2);">
+            <div class="modal-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                <h2 style="color: #333;">Registrar Pagamento</h2>
+                <span class="close" onclick="closeModal('pagamentoModal')" style="font-size: 28px; font-weight: bold; cursor: pointer; color: #999;">&times;</span>
+            </div>
+            <form id="pagamentoForm" method="POST">
+                <div style="margin-bottom: 20px;">
+                    <label style="display: block; margin-bottom: 5px; color: #4a5568; font-weight: 500;">Cliente</label>
+                    <input type="text" id="payment_cliente_nome" readonly style="width: 100%; padding: 10px; border: 1px solid #e2e8f0; border-radius: 5px; background: #f7fafc;">
+                </div>
+                <div style="margin-bottom: 20px;">
+                    <label style="display: block; margin-bottom: 5px; color: #4a5568; font-weight: 500;">Valor Total da Cobrança</label>
+                    <input type="text" id="payment_valor_total" readonly style="width: 100%; padding: 10px; border: 1px solid #e2e8f0; border-radius: 5px; background: #f7fafc;">
+                </div>
+                <div style="margin-bottom: 20px;">
+                    <label for="valor_pago" style="display: block; margin-bottom: 5px; color: #4a5568; font-weight: 500;">Valor Pago (R$) *</label>
+                    <input type="number" id="valor_pago" name="valor_pago" step="0.01" required style="width: 100%; padding: 10px; border: 1px solid #e2e8f0; border-radius: 5px;">
+                </div>
+                <div style="margin-bottom: 20px;">
+                    <label for="forma_pagamento" style="display: block; margin-bottom: 5px; color: #4a5568; font-weight: 500;">Forma de Pagamento *</label>
+                    <select id="forma_pagamento" name="forma_pagamento" required style="width: 100%; padding: 10px; border: 1px solid #e2e8f0; border-radius: 5px;">
+                        <option value="">Selecione...</option>
+                        <option value="Dinheiro">Dinheiro</option>
+                        <option value="Pix">Pix</option>
+                        <option value="Cartão de Crédito">Cartão de Crédito</option>
+                        <option value="Cartão de Débito">Cartão de Débito</option>
+                        <option value="Boleto">Boleto</option>
+                        <option value="Transferência">Transferência</option>
+                    </select>
+                </div>
+                <div style="margin-bottom: 20px;">
+                    <label for="observacoes" style="display: block; margin-bottom: 5px; color: #4a5568; font-weight: 500;">Observações</label>
+                    <textarea id="observacoes" name="observacoes" style="width: 100%; padding: 10px; border: 1px solid #e2e8f0; border-radius: 5px; min-height: 80px; resize: vertical;"></textarea>
+                </div>
+                <div style="display: flex; gap: 10px; justify-content: flex-end; margin-top: 25px;">
+                    <button type="button" onclick="closeModal('pagamentoModal')" style="padding: 10px 25px; background: #e2e8f0; color: #4a5568; border: none; border-radius: 5px; cursor: pointer; font-size: 16px;">Cancelar</button>
+                    <button type="submit" style="padding: 10px 25px; background: #667eea; color: white; border: none; border-radius: 5px; cursor: pointer; font-size: 16px;">Registrar Pagamento</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script>
+        function openPaymentModal(cobrancaId, clienteNome, valorTotal) {
+            document.getElementById('pagamentoModal').style.display = "block";
+            document.getElementById('payment_cliente_nome').value = clienteNome;
+            document.getElementById('payment_valor_total').value = `R$ ${valorTotal.toFixed(2).replace('.', ',')}`;
+            document.getElementById('pagamentoForm').action = `/cobranca/${cobrancaId}/pagar`;
+        }
+
+        function closeModal(modalId) {
+            document.getElementById(modalId).style.display = "none";
+        }
+
+        window.onclick = function(event) {
+            if (event.target.className === 'modal') {
+                event.target.style.display = "none";
+            }
+        }
+    </script>
+</body>
+</html>

@@ -1,0 +1,589 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Clientes - Sistema de Cobrança</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+
+        /* Header */
+        .header {
+            background: white;
+            padding: 20px 30px;
+            border-radius: 10px;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+            margin-bottom: 30px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .header h1 {
+            color: #333;
+            font-size: 28px;
+        }
+
+        .header-actions {
+            display: flex;
+            gap: 10px;
+        }
+
+        .btn {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            text-decoration: none;
+            display: inline-block;
+            font-size: 14px;
+            font-weight: 500;
+            transition: all 0.3s;
+        }
+
+        .btn-primary {
+            background: #667eea;
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: #5a67d8;
+            transform: translateY(-2px);
+        }
+
+        .btn-secondary {
+            background: #e2e8f0;
+            color: #4a5568;
+        }
+
+        .btn-secondary:hover {
+            background: #cbd5e0;
+        }
+
+        /* Flash Messages */
+        .flash-messages {
+            margin-bottom: 20px;
+        }
+
+        .flash {
+            padding: 15px;
+            border-radius: 5px;
+            margin-bottom: 10px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .flash.success {
+            background: #c6f6d5;
+            color: #22543d;
+            border-left: 4px solid #48bb78;
+        }
+
+        .flash.danger {
+            background: #fed7d7;
+            color: #c53030;
+            border-left: 4px solid #f56565;
+        }
+
+        .flash.warning {
+            background: #feebc8;
+            color: #7c2d12;
+            border-left: 4px solid #ed8936;
+        }
+
+        .flash.info {
+            background: #bee3f8;
+            color: #2c5282;
+            border-left: 4px solid #4299e1;
+        }
+
+        .close {
+            cursor: pointer;
+            font-weight: bold;
+        }
+
+        /* Search and Filters */
+        .filters {
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+            margin-bottom: 30px;
+        }
+
+        .filters-row {
+            display: flex;
+            gap: 15px;
+            align-items: end;
+            flex-wrap: wrap;
+        }
+
+        .filter-group {
+            flex: 1;
+            min-width: 200px;
+        }
+
+        .filter-group label {
+            display: block;
+            margin-bottom: 5px;
+            color: #4a5568;
+            font-weight: 500;
+        }
+
+        .filter-group input,
+        .filter-group select {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #e2e8f0;
+            border-radius: 5px;
+            font-size: 14px;
+        }
+
+        /* Table Container */
+        .table-container {
+            background: white;
+            border-radius: 10px;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+            overflow: hidden;
+        }
+
+        .table-header {
+            padding: 20px 25px;
+            background: #f7fafc;
+            border-bottom: 1px solid #e2e8f0;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .table-header h2 {
+            color: #333;
+            font-size: 20px;
+        }
+
+        .table-stats {
+            color: #666;
+            font-size: 14px;
+        }
+
+        .table-wrapper {
+            overflow-x: auto;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        th {
+            background: #f7fafc;
+            padding: 15px 12px;
+            text-align: left;
+            font-weight: 600;
+            color: #4a5568;
+            border-bottom: 2px solid #e2e8f0;
+            white-space: nowrap;
+        }
+
+        td {
+            padding: 15px 12px;
+            border-bottom: 1px solid #e2e8f0;
+            color: #4a5568;
+        }
+
+        tr:hover {
+            background: #f7fafc;
+        }
+
+        /* Status Badges */
+        .badge {
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 600;
+            display: inline-block;
+        }
+
+        .badge.active {
+            background: #c6f6d5;
+            color: #22543d;
+        }
+
+        .badge.inactive {
+            background: #fed7d7;
+            color: #c53030;
+        }
+
+        /* Action Buttons */
+        .table-actions {
+            display: flex;
+            gap: 5px;
+        }
+
+        .btn-sm {
+            padding: 5px 10px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 12px;
+            text-decoration: none;
+            display: inline-block;
+            transition: all 0.3s;
+        }
+
+        .btn-sm.view {
+            background: #4299e1;
+            color: white;
+        }
+
+        .btn-sm.edit {
+            background: #ed8936;
+            color: white;
+        }
+
+        .btn-sm.delete {
+            background: #f56565;
+            color: white;
+        }
+
+        .btn-sm:hover {
+            opacity: 0.8;
+            transform: translateY(-1px);
+        }
+
+        /* Empty State */
+        .empty-state {
+            text-align: center;
+            padding: 60px 20px;
+            color: #666;
+        }
+
+        .empty-state h3 {
+            margin-bottom: 10px;
+            color: #4a5568;
+        }
+
+        .empty-state p {
+            margin-bottom: 20px;
+        }
+
+        /* Responsive */
+        @media (max-width: 768px) {
+            .header {
+                flex-direction: column;
+                text-align: center;
+                gap: 15px;
+            }
+
+            .filters-row {
+                flex-direction: column;
+            }
+
+            .filter-group {
+                min-width: auto;
+            }
+
+            table {
+                font-size: 14px;
+            }
+
+            th, td {
+                padding: 10px 8px;
+            }
+
+            .table-actions {
+                flex-direction: column;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <div class="header">
+            <h1>Gerenciar Clientes</h1>
+            <div class="header-actions">
+                <a href="{{ url_for('index') }}" class="btn btn-secondary">← Voltar</a>
+                <a href="{{ url_for('adicionar_cliente') }}" class="btn btn-primary">+ Novo Cliente</a>
+            </div>
+        </div>
+
+        <!-- Flash Messages -->
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                <div class="flash-messages">
+                    {% for category, message in messages %}
+                        <div class="flash {{ category }}">
+                            {{ message }}
+                            <span class="close" onclick="this.parentElement.style.display='none';">&times;</span>
+                        </div>
+                    {% endfor %}
+                </div>
+            {% endif %}
+        {% endwith %}
+
+        <!-- Filters -->
+        <div class="filters">
+            <div class="filters-row">
+                <div class="filter-group">
+                    <label for="searchName">Buscar por nome</label>
+                    <input type="text" id="searchName" placeholder="Digite o nome do cliente...">
+                </div>
+                <div class="filter-group">
+                    <label for="filterState">Estado</label>
+                    <select id="filterState">
+                        <option value="">Todos os estados</option>
+                        <option value="AC">AC</option>
+                        <option value="AL">AL</option>
+                        <option value="AP">AP</option>
+                        <option value="AM">AM</option>
+                        <option value="BA">BA</option>
+                        <option value="CE">CE</option>
+                        <option value="DF">DF</option>
+                        <option value="ES">ES</option>
+                        <option value="GO">GO</option>
+                        <option value="MA">MA</option>
+                        <option value="MT">MT</option>
+                        <option value="MS">MS</option>
+                        <option value="MG">MG</option>
+                        <option value="PA">PA</option>
+                        <option value="PB">PB</option>
+                        <option value="PR">PR</option>
+                        <option value="PE">PE</option>
+                        <option value="PI">PI</option>
+                        <option value="RJ">RJ</option>
+                        <option value="RN">RN</option>
+                        <option value="RS">RS</option>
+                        <option value="RO">RO</option>
+                        <option value="RR">RR</option>
+                        <option value="SC">SC</option>
+                        <option value="SP">SP</option>
+                        <option value="SE">SE</option>
+                        <option value="TO">TO</option>
+                    </select>
+                </div>
+                <div class="filter-group">
+                    <label for="filterDebt">Situação</label>
+                    <select id="filterDebt">
+                        <option value="">Todos</option>
+                        <option value="with-debt">Com pendências</option>
+                        <option value="no-debt">Sem pendências</option>
+                    </select>
+                </div>
+                <div class="filter-group">
+                    <button type="button" class="btn btn-secondary" onclick="clearFilters()">Limpar</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Table Container -->
+        <div class="table-container">
+            <div class="table-header">
+                <h2>Lista de Clientes</h2>
+                <div class="table-stats">
+                    Total: <strong id="totalCount">{{ clientes|length }}</strong> cliente{{ 's' if clientes|length != 1 else '' }}
+                </div>
+            </div>
+
+            {% if clientes %}
+            <div class="table-wrapper">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Cliente</th>
+                            <th>CPF/CNPJ</th>
+                            <th>Contato</th>
+                            <th>Localização</th>
+                            <th>Cobranças</th>
+                            <th>Pendências</th>
+                            <th>Valor Pendente</th>
+                            <th>Ações</th>
+                        </tr>
+                    </thead>
+                    <tbody id="clientesTable">
+                        {% for cliente in clientes %}
+                        <tr data-name="{{ cliente.nome|lower }}" data-state="{{ cliente.estado or '' }}" data-debt="{{ 'with-debt' if cliente.cobrancas_pendentes > 0 else 'no-debt' }}">
+                            <td>
+                                <strong>{{ cliente.nome }}</strong><br>
+                                {% if cliente.email %}
+                                <small style="color: #666;">{{ cliente.email }}</small>
+                                {% endif %}
+                            </td>
+                            <td>
+                                {% if cliente.cpf_cnpj %}
+                                    {{ cliente.cpf_cnpj }}
+                                {% else %}
+                                    <span style="color: #999;">Não informado</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                {% if cliente.telefone %}
+                                    <strong>{{ cliente.telefone }}</strong>
+                                    {% if cliente.telefone_secundario %}
+                                        <br><small>{{ cliente.telefone_secundario }}</small>
+                                    {% endif %}
+                                {% else %}
+                                    <span style="color: #999;">Não informado</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                {% if cliente.cidade or cliente.estado %}
+                                    {% if cliente.cidade %}{{ cliente.cidade }}{% endif %}
+                                    {% if cliente.cidade and cliente.estado %} - {% endif %}
+                                    {% if cliente.estado %}{{ cliente.estado }}{% endif %}
+                                {% else %}
+                                    <span style="color: #999;">Não informado</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                <strong>{{ cliente.total_cobrancas or 0 }}</strong>
+                            </td>
+                            <td>
+                                {% if cliente.cobrancas_pendentes > 0 %}
+                                    <span class="badge inactive">{{ cliente.cobrancas_pendentes }}</span>
+                                {% else %}
+                                    <span class="badge active">0</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                {% if cliente.valor_pendente > 0 %}
+                                    <strong style="color: #c53030;">
+                                        R$ {{ "{:,.2f}".format(cliente.valor_pendente).replace(',', 'X').replace('.', ',').replace('X', '.') }}
+                                    </strong>
+                                {% else %}
+                                    <span style="color: #22543d;">R$ 0,00</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                <div class="table-actions">
+                                    <a href="{{ url_for('visualizar_cliente', cliente_id=cliente.id) }}" class="btn-sm view">Ver</a>
+                                    <a href="{{ url_for('editar_cliente', cliente_id=cliente.id) }}" class="btn-sm edit">Editar</a>
+                                    <button onclick="confirmDelete({{ cliente.id }}, '{{ cliente.nome }}')" class="btn-sm delete">Excluir</button>
+                                </div>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% else %}
+            <div class="empty-state">
+                <h3>Nenhum cliente cadastrado</h3>
+                <p>Comece adicionando seu primeiro cliente ao sistema.</p>
+                <a href="{{ url_for('adicionar_cliente') }}" class="btn btn-primary">+ Adicionar Cliente</a>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+
+    <script>
+        // Search and filter functionality
+        function filterTable() {
+            const searchName = document.getElementById('searchName').value.toLowerCase();
+            const filterState = document.getElementById('filterState').value;
+            const filterDebt = document.getElementById('filterDebt').value;
+            const rows = document.querySelectorAll('#clientesTable tr');
+            let visibleCount = 0;
+
+            rows.forEach(row => {
+                const name = row.getAttribute('data-name');
+                const state = row.getAttribute('data-state');
+                const debt = row.getAttribute('data-debt');
+
+                let showRow = true;
+
+                // Filter by name
+                if (searchName && !name.includes(searchName)) {
+                    showRow = false;
+                }
+
+                // Filter by state
+                if (filterState && state !== filterState) {
+                    showRow = false;
+                }
+
+                // Filter by debt
+                if (filterDebt && debt !== filterDebt) {
+                    showRow = false;
+                }
+
+                row.style.display = showRow ? '' : 'none';
+                if (showRow) visibleCount++;
+            });
+
+            // Update count
+            document.getElementById('totalCount').textContent = visibleCount;
+        }
+
+        // Clear all filters
+        function clearFilters() {
+            document.getElementById('searchName').value = '';
+            document.getElementById('filterState').value = '';
+            document.getElementById('filterDebt').value = '';
+            filterTable();
+        }
+
+        // Confirm delete
+        function confirmDelete(clienteId, clienteNome) {
+            if (confirm(`Tem certeza que deseja excluir o cliente "${clienteNome}"?\n\nEsta ação não pode ser desfeita e também excluirá todas as cobranças relacionadas.`)) {
+                // Create form to delete cliente
+                const form = document.createElement('form');
+                form.method = 'POST';
+                form.action = `/cliente/${clienteId}/deletar`;
+                
+                // Add CSRF token if needed
+                const csrfToken = document.querySelector('meta[name="csrf-token"]');
+                if (csrfToken) {
+                    const tokenInput = document.createElement('input');
+                    tokenInput.type = 'hidden';
+                    tokenInput.name = 'csrf_token';
+                    tokenInput.value = csrfToken.getAttribute('content');
+                    form.appendChild(tokenInput);
+                }
+                
+                document.body.appendChild(form);
+                form.submit();
+            }
+        }
+
+        // Event listeners
+        document.addEventListener('DOMContentLoaded', function() {
+            document.getElementById('searchName').addEventListener('input', filterTable);
+            document.getElementById('filterState').addEventListener('change', filterTable);
+            document.getElementById('filterDebt').addEventListener('change', filterTable);
+        });
+
+        // Auto-hide flash messages
+        document.addEventListener('DOMContentLoaded', function() {
+            const flashMessages = document.querySelectorAll('.flash');
+            flashMessages.forEach(function(message) {
+                setTimeout(function() {
+                    message.style.opacity = '0';
+                    setTimeout(function() {
+                        if (message.parentNode) {
+                            message.remove();
+                        }
+                    }, 300);
+                }, 5000);
+            });
+        });
+    </script>
+</body>
+</html>

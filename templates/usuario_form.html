@@ -1,0 +1,365 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% if usuario %}Editar Usuário{% else %}Novo Usuário{% endif %} - Sistema de Cobrança</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 600px;
+            margin: 0 auto;
+        }
+
+        .header {
+            background: white;
+            padding: 20px 30px;
+            border-radius: 10px;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+            margin-bottom: 30px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .header h1 {
+            color: #333;
+            font-size: 28px;
+        }
+
+        .btn {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            text-decoration: none;
+            display: inline-block;
+            font-size: 14px;
+            font-weight: 500;
+            transition: all 0.3s;
+        }
+
+        .btn-secondary {
+            background: #e2e8f0;
+            color: #4a5568;
+        }
+
+        .btn-secondary:hover {
+            background: #cbd5e0;
+        }
+
+        .form-container {
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 8px;
+            color: #4a5568;
+            font-weight: 500;
+            font-size: 14px;
+        }
+
+        .form-group label .required {
+            color: #f56565;
+            margin-left: 3px;
+        }
+
+        .form-group input,
+        .form-group select {
+            width: 100%;
+            padding: 12px 15px;
+            border: 2px solid #e2e8f0;
+            border-radius: 8px;
+            font-size: 16px;
+            transition: border-color 0.3s;
+        }
+
+        .form-group input:focus,
+        .form-group select:focus {
+            outline: none;
+            border-color: #667eea;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+        }
+
+        .form-actions {
+            display: flex;
+            gap: 15px;
+            justify-content: flex-end;
+            margin-top: 30px;
+            padding-top: 20px;
+            border-top: 1px solid #e2e8f0;
+        }
+
+        .btn-submit {
+            padding: 12px 30px;
+            background: #667eea;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 16px;
+            font-weight: 600;
+            transition: all 0.3s;
+        }
+
+        .btn-submit:hover {
+            background: #5a67d8;
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+        }
+
+        .btn-cancel {
+            padding: 12px 30px;
+            background: #e2e8f0;
+            color: #4a5568;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 16px;
+            font-weight: 600;
+            text-decoration: none;
+            display: inline-block;
+            transition: all 0.3s;
+        }
+
+        .btn-cancel:hover {
+            background: #cbd5e0;
+        }
+
+        .password-help {
+            font-size: 12px;
+            color: #666;
+            margin-top: 5px;
+        }
+
+        .form-group.error input,
+        .form-group.error select {
+            border-color: #f56565;
+        }
+
+        .error-message {
+            color: #f56565;
+            font-size: 12px;
+            margin-top: 5px;
+        }
+
+        @media (max-width: 768px) {
+            .header {
+                flex-direction: column;
+                gap: 15px;
+            }
+
+            .form-actions {
+                flex-direction: column;
+            }
+
+            .btn-submit,
+            .btn-cancel {
+                width: 100%;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>{% if usuario %}Editar Usuário{% else %}Novo Usuário{% endif %}</h1>
+            <a href="{{ url_for('listar_usuarios') }}" class="btn btn-secondary">← Voltar</a>
+        </div>
+
+        <div class="form-container">
+            <form method="POST" id="usuarioForm" novalidate>
+                <div class="form-group">
+                    <label for="nome">Nome Completo <span class="required">*</span></label>
+                    <input type="text" id="nome" name="nome" value="{{ usuario.nome if usuario else '' }}" required>
+                    <div class="error-message" id="nome-error"></div>
+                </div>
+
+                <div class="form-group">
+                    <label for="email">E-mail <span class="required">*</span></label>
+                    <input type="email" id="email" name="email" value="{{ usuario.email if usuario else '' }}" required>
+                    <div class="error-message" id="email-error"></div>
+                </div>
+
+                <div class="form-group">
+                    <label for="senha">{% if usuario %}Nova Senha{% else %}Senha{% endif %} {% if not usuario %}<span class="required">*</span>{% endif %}</label>
+                    <input type="password" id="senha" name="senha" {% if not usuario %}required{% endif %}>
+                    <div class="password-help">
+                        {% if usuario %}
+                            Deixe em branco para manter a senha atual
+                        {% else %}
+                            Mínimo de 6 caracteres
+                        {% endif %}
+                    </div>
+                    <div class="error-message" id="senha-error"></div>
+                </div>
+
+                <div class="form-group">
+                    <label for="confirmar_senha">Confirmar Senha {% if not usuario %}<span class="required">*</span>{% endif %}</label>
+                    <input type="password" id="confirmar_senha" name="confirmar_senha" {% if not usuario %}required{% endif %}>
+                    <div class="error-message" id="confirmar_senha-error"></div>
+                </div>
+
+                <div class="form-group">
+                    <label for="tipo">Tipo de Usuário <span class="required">*</span></label>
+                    <select id="tipo" name="tipo" required>
+                        <option value="">Selecione...</option>
+                        <option value="admin" {% if usuario and usuario.tipo == 'admin' %}selected{% endif %}>Administrador</option>
+                        <option value="operador" {% if usuario and usuario.tipo == 'operador' %}selected{% endif %}>Operador</option>
+                    </select>
+                    <div class="error-message" id="tipo-error"></div>
+                </div>
+
+                <div class="form-actions">
+                    <a href="{{ url_for('listar_usuarios') }}" class="btn-cancel">Cancelar</a>
+                    <button type="submit" class="btn-submit" id="submitBtn">
+                        {% if usuario %}Atualizar Usuário{% else %}Salvar Usuário{% endif %}
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script>
+        function validateEmail(email) {
+            const re = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+            return re.test(email);
+        }
+
+        function validateForm() {
+            let isValid = true;
+            const errors = {};
+
+            // Clear previous errors
+            document.querySelectorAll('.form-group').forEach(group => {
+                group.classList.remove('error');
+            });
+            document.querySelectorAll('.error-message').forEach(msg => {
+                msg.textContent = '';
+            });
+
+            // Validate required fields
+            const nome = document.getElementById('nome').value.trim();
+            if (!nome) {
+                errors.nome = 'Nome é obrigatório';
+                isValid = false;
+            }
+
+            const email = document.getElementById('email').value.trim();
+            if (!email) {
+                errors.email = 'E-mail é obrigatório';
+                isValid = false;
+            } else if (!validateEmail(email)) {
+                errors.email = 'E-mail inválido';
+                isValid = false;
+            }
+
+            const senha = document.getElementById('senha').value;
+            const confirmarSenha = document.getElementById('confirmar_senha').value;
+            const isEdit = {{ 'true' if usuario else 'false' }};
+
+            if (!isEdit && !senha) {
+                errors.senha = 'Senha é obrigatória';
+                isValid = false;
+            } else if (senha && senha.length < 6) {
+                errors.senha = 'Senha deve ter pelo menos 6 caracteres';
+                isValid = false;
+            }
+
+            if (senha && senha !== confirmarSenha) {
+                errors.confirmar_senha = 'Senhas não conferem';
+                isValid = false;
+            }
+
+            const tipo = document.getElementById('tipo').value;
+            if (!tipo) {
+                errors.tipo = 'Tipo de usuário é obrigatório';
+                isValid = false;
+            }
+
+            // Show errors
+            Object.keys(errors).forEach(field => {
+                const group = document.getElementById(field).closest('.form-group');
+                const errorMsg = document.getElementById(field + '-error');
+                group.classList.add('error');
+                errorMsg.textContent = errors[field];
+            });
+
+            return isValid;
+        }
+
+        document.addEventListener('DOMContentLoaded', function() {
+            const form = document.getElementById('usuarioForm');
+            form.addEventListener('submit', function(e) {
+                if (!validateForm()) {
+                    e.preventDefault();
+                    return;
+                }
+
+                // Show loading state
+                const submitBtn = document.getElementById('submitBtn');
+                submitBtn.disabled = true;
+                submitBtn.textContent = 'Salvando...';
+            });
+
+            // Real-time validation
+            document.getElementById('nome').addEventListener('blur', function() {
+                if (!this.value.trim()) {
+                    this.closest('.form-group').classList.add('error');
+                    document.getElementById('nome-error').textContent = 'Nome é obrigatório';
+                } else {
+                    this.closest('.form-group').classList.remove('error');
+                    document.getElementById('nome-error').textContent = '';
+                }
+            });
+
+            document.getElementById('email').addEventListener('blur', function() {
+                const email = this.value.trim();
+                if (!email) {
+                    this.closest('.form-group').classList.add('error');
+                    document.getElementById('email-error').textContent = 'E-mail é obrigatório';
+                } else if (!validateEmail(email)) {
+                    this.closest('.form-group').classList.add('error');
+                    document.getElementById('email-error').textContent = 'E-mail inválido';
+                } else {
+                    this.closest('.form-group').classList.remove('error');
+                    document.getElementById('email-error').textContent = '';
+                }
+            });
+
+            document.getElementById('confirmar_senha').addEventListener('blur', function() {
+                const senha = document.getElementById('senha').value;
+                const confirmarSenha = this.value;
+                
+                if (senha && senha !== confirmarSenha) {
+                    this.closest('.form-group').classList.add('error');
+                    document.getElementById('confirmar_senha-error').textContent = 'Senhas não conferem';
+                } else {
+                    this.closest('.form-group').classList.remove('error');
+                    document.getElementById('confirmar_senha-error').textContent = '';
+                }
+            });
+        });
+    </script>
+</body>
+</html>

@@ -1,0 +1,299 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% if cobranca %}Editar Cobrança{% else %}Nova Cobrança{% endif %} - Sistema de Cobrança</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+        }
+
+        .header {
+            background: white;
+            padding: 20px 30px;
+            border-radius: 10px;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+            margin-bottom: 30px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .header h1 {
+            color: #333;
+            font-size: 28px;
+        }
+
+        .btn {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            text-decoration: none;
+            display: inline-block;
+            font-size: 14px;
+            font-weight: 500;
+            transition: all 0.3s;
+        }
+
+        .btn-secondary {
+            background: #e2e8f0;
+            color: #4a5568;
+        }
+
+        .btn-secondary:hover {
+            background: #cbd5e0;
+        }
+
+        .form-container {
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+        }
+
+        .form-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 20px;
+            margin-bottom: 25px;
+        }
+
+        .form-group {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .form-group.full-width {
+            grid-column: 1 / -1;
+        }
+
+        .form-group label {
+            margin-bottom: 8px;
+            color: #4a5568;
+            font-weight: 500;
+            font-size: 14px;
+        }
+
+        .form-group label .required {
+            color: #f56565;
+            margin-left: 3px;
+        }
+
+        .form-group input,
+        .form-group select,
+        .form-group textarea {
+            padding: 12px 15px;
+            border: 2px solid #e2e8f0;
+            border-radius: 8px;
+            font-size: 16px;
+            transition: border-color 0.3s;
+        }
+
+        .form-group input:focus,
+        .form-group select:focus,
+        .form-group textarea:focus {
+            outline: none;
+            border-color: #667eea;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+        }
+
+        .form-actions {
+            display: flex;
+            gap: 15px;
+            justify-content: flex-end;
+            margin-top: 30px;
+            padding-top: 20px;
+            border-top: 1px solid #e2e8f0;
+        }
+
+        .btn-submit {
+            padding: 12px 30px;
+            background: #667eea;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 16px;
+            font-weight: 600;
+            transition: all 0.3s;
+        }
+
+        .btn-submit:hover {
+            background: #5a67d8;
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+        }
+
+        .btn-cancel {
+            padding: 12px 30px;
+            background: #e2e8f0;
+            color: #4a5568;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 16px;
+            font-weight: 600;
+            text-decoration: none;
+            display: inline-block;
+            transition: all 0.3s;
+        }
+
+        .btn-cancel:hover {
+            background: #cbd5e0;
+        }
+
+        #parcelasDiv {
+            display: none;
+        }
+
+        @media (max-width: 768px) {
+            .header {
+                flex-direction: column;
+                gap: 15px;
+            }
+
+            .form-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .form-actions {
+                flex-direction: column;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>{% if cobranca %}Editar Cobrança{% else %}Nova Cobrança{% endif %}</h1>
+            <a href="{{ url_for('index') }}" class="btn btn-secondary">← Voltar</a>
+        </div>
+
+        <div class="form-container">
+            <form method="POST" id="cobrancaForm">
+                <div class="form-grid">
+                    <div class="form-group">
+                        <label for="cliente_id">Cliente <span class="required">*</span></label>
+                        <select id="cliente_id" name="cliente_id" required>
+                            <option value="">Selecione um cliente...</option>
+                            {% for cliente in clientes %}
+                            <option value="{{ cliente.id }}" {% if cobranca and cobranca.cliente_id == cliente.id %}selected{% endif %}>
+                                {{ cliente.nome }}
+                            </option>
+                            {% endfor %}
+                        </select>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="valor_original">Valor Original (R$) <span class="required">*</span></label>
+                        <input type="number" id="valor_original" name="valor_original" step="0.01" min="0.01" 
+                               value="{{ cobranca.valor_original if cobranca else '' }}" required>
+                    </div>
+
+                    <div class="form-group full-width">
+                        <label for="descricao">Descrição</label>
+                        <input type="text" id="descricao" name="descricao" 
+                               value="{{ cobranca.descricao if cobranca else '' }}" 
+                               placeholder="Descreva o motivo da cobrança...">
+                    </div>
+
+                    <div class="form-group">
+                        <label for="data_vencimento">Data de Vencimento <span class="required">*</span></label>
+                        <input type="date" id="data_vencimento" name="data_vencimento" 
+                               value="{{ cobranca.data_vencimento if cobranca else '' }}" required>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="tipo_cobranca">Tipo de Cobrança</label>
+                        <select id="tipo_cobranca" name="tipo_cobranca" onchange="toggleParcelas()">
+                            <option value="Única" {% if cobranca and cobranca.tipo_cobranca == 'Única' %}selected{% endif %}>Única</option>
+                            <option value="Parcelada" {% if cobranca and cobranca.tipo_cobranca == 'Parcelada' %}selected{% endif %}>Parcelada</option>
+                        </select>
+                    </div>
+
+                    <div class="form-group" id="parcelasDiv">
+                        <label for="numero_parcelas">Número de Parcelas</label>
+                        <input type="number" id="numero_parcelas" name="numero_parcelas" 
+                               min="2" max="12" value="{{ cobranca.numero_parcelas if cobranca else '2' }}">
+                    </div>
+                </div>
+
+                <div class="form-actions">
+                    <a href="{{ url_for('index') }}" class="btn-cancel">Cancelar</a>
+                    <button type="submit" class="btn-submit">
+                        {% if cobranca %}Atualizar Cobrança{% else %}Criar Cobrança{% endif %}
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script>
+        function toggleParcelas() {
+            const tipo = document.getElementById('tipo_cobranca').value;
+            const parcelasDiv = document.getElementById('parcelasDiv');
+            parcelasDiv.style.display = tipo === 'Parcelada' ? 'block' : 'none';
+        }
+
+        document.addEventListener('DOMContentLoaded', function() {
+            // Set minimum date to today
+            const today = new Date().toISOString().split('T')[0];
+            document.getElementById('data_vencimento').min = today;
+
+            // Initialize parcelas visibility
+            toggleParcelas();
+
+            // Form validation
+            document.getElementById('cobrancaForm').addEventListener('submit', function(e) {
+                const clienteId = document.getElementById('cliente_id').value;
+                const valorOriginal = document.getElementById('valor_original').value;
+                const dataVencimento = document.getElementById('data_vencimento').value;
+
+                if (!clienteId) {
+                    e.preventDefault();
+                    alert('Selecione um cliente!');
+                    return;
+                }
+
+                if (!valorOriginal || parseFloat(valorOriginal) <= 0) {
+                    e.preventDefault();
+                    alert('Valor original deve ser maior que zero!');
+                    return;
+                }
+
+                if (!dataVencimento) {
+                    e.preventDefault();
+                    alert('Data de vencimento é obrigatória!');
+                    return;
+                }
+
+                // Check if date is not in the past
+                const today = new Date();
+                const vencimento = new Date(dataVencimento);
+                if (vencimento < today) {
+                    if (!confirm('A data de vencimento está no passado. Deseja continuar?')) {
+                        e.preventDefault();
+                        return;
+                    }
+                }
+            });
+        });
+    </script>
+</body>
+</html>
