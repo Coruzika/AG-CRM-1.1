@@ -322,6 +322,9 @@ def index():
     cur.execute("SELECT COUNT(*) as count FROM cobrancas WHERE status = 'Pendente' AND data_vencimento < CURRENT_DATE")
     cobrancas_vencidas = cur.fetchone()['count']
     
+    cur.execute("SELECT COUNT(*) as count FROM cobrancas WHERE status = 'Pago'")
+    cobrancas_pagas = cur.fetchone()['count']
+    
     cur.execute("SELECT COALESCE(SUM(valor_original), 0) as total FROM cobrancas WHERE status = 'Pendente'")
     valor_total_pendente = cur.fetchone()['total']
     
@@ -332,6 +335,7 @@ def index():
         'total_clientes': total_clientes,
         'cobrancas_pendentes': cobrancas_pendentes,
         'cobrancas_vencidas': cobrancas_vencidas,
+        'cobrancas_pagas': cobrancas_pagas,
         'valor_total_pendente': valor_total_pendente,
         'valor_total_recebido': valor_total_recebido,
     }
@@ -883,6 +887,59 @@ def configuracoes():
     conn.close()
     
     return render_template('configuracoes.html', configs=configs)
+
+# --- Rota do Dashboard de Parcelas ---
+@app.route('/dashboard-parcelas')
+@login_required
+def dashboard_parcelas():
+    """Exibe o dashboard com gráfico de parcelas dos clientes."""
+    conn = get_db()
+    cur = conn.cursor(row_factory=dict_row)
+    
+    # Buscar dados reais dos clientes e suas parcelas
+    cur.execute('''
+        SELECT 
+            c.id,
+            c.nome,
+            COUNT(co.id) as total_parcelas,
+            SUM(CASE WHEN co.status = 'Pago' THEN 1 ELSE 0 END) as parcelas_pagas,
+            SUM(CASE WHEN co.status = 'Pendente' AND co.data_vencimento >= CURRENT_DATE THEN 1 ELSE 0 END) as parcelas_a_pagar,
+            SUM(CASE WHEN co.status = 'Pendente' AND co.data_vencimento < CURRENT_DATE THEN 1 ELSE 0 END) as parcelas_vencidas
+        FROM clientes c
+        LEFT JOIN cobrancas co ON c.id = co.cliente_id
+        GROUP BY c.id, c.nome
+        HAVING COUNT(co.id) > 0
+        ORDER BY c.nome
+    ''')
+    
+    clientes_com_parcelas = cur.fetchall()
+    
+    # Estatísticas gerais
+    cur.execute("SELECT COUNT(*) as count FROM clientes")
+    total_clientes = cur.fetchone()['count']
+    
+    cur.execute("SELECT COUNT(*) as count FROM cobrancas WHERE status = 'Pago'")
+    total_pagas = cur.fetchone()['count']
+    
+    cur.execute("SELECT COUNT(*) as count FROM cobrancas WHERE status = 'Pendente' AND data_vencimento >= CURRENT_DATE")
+    total_a_pagar = cur.fetchone()['count']
+    
+    cur.execute("SELECT COUNT(*) as count FROM cobrancas WHERE status = 'Pendente' AND data_vencimento < CURRENT_DATE")
+    total_vencidas = cur.fetchone()['count']
+    
+    stats_gerais = {
+        'total_clientes': total_clientes,
+        'total_pagas': total_pagas,
+        'total_a_pagar': total_a_pagar,
+        'total_vencidas': total_vencidas
+    }
+    
+    cur.close()
+    conn.close()
+    
+    return render_template('dashboard_parcelas.html', 
+                         clientes=clientes_com_parcelas,
+                         stats=stats_gerais)
 
 # --- Execução da Aplicação ---
 if __name__ == '__main__':

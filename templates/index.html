@@ -652,6 +652,21 @@
             border: 1px solid var(--primary-200);
         }
 
+        /* Gráfico responsivo */
+        .grafico-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 24px;
+            align-items: start;
+        }
+
+        @media (max-width: 768px) {
+            .grafico-grid {
+                grid-template-columns: 1fr;
+                gap: 16px;
+            }
+        }
+
         /* Responsive Design */
         @media (max-width: 1024px) {
             .container {
@@ -915,6 +930,110 @@
             </div>
         </div>
 
+        <!-- Gráfico de Parcelas -->
+        <div class="table-container" style="margin-bottom: 32px;">
+            <div class="table-header">
+                <h2>
+                    <i data-feather="pie-chart" style="width: 20px; height: 20px; margin-right: 8px;"></i>
+                    Gráfico de Parcelas por Status
+                </h2>
+            </div>
+            <div style="padding: 24px;">
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 24px; align-items: start;" class="grafico-grid">
+                    <!-- Gráfico -->
+                    <div style="background: white; border-radius: 12px; padding: 20px; box-shadow: var(--shadow-sm);">
+                        <div style="text-align: center; margin-bottom: 16px;">
+                            <h3 style="color: var(--gray-900); font-size: 16px; font-weight: 600; margin-bottom: 8px;">
+                                Distribuição das Parcelas
+                            </h3>
+                            <p style="color: var(--gray-500); font-size: 14px;" id="total-parcelas-grafico">
+                                Total: {{ (stats.cobrancas_pagas or 0) + stats.cobrancas_pendentes }} parcelas
+                            </p>
+                        </div>
+                        
+                        <div style="position: relative; height: 300px; width: 100%;">
+                            <canvas id="parcelasChart" width="300" height="300"></canvas>
+                            <div id="chart-loading" style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); color: var(--gray-500);">
+                                Carregando gráfico...
+                            </div>
+                        </div>
+                        
+                        <!-- Resumo dos dados -->
+                        <div style="margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--gray-200);">
+                            <div style="display: grid; grid-template-columns: 1fr; gap: 8px;" id="resumo-dados-grafico">
+                                <!-- Será preenchido pelo JavaScript -->
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Estatísticas Detalhadas -->
+                    <div style="background: white; border-radius: 12px; padding: 20px; box-shadow: var(--shadow-sm);">
+                        <h3 style="color: var(--gray-900); font-size: 16px; font-weight: 600; margin-bottom: 16px;">
+                            Resumo Detalhado
+                        </h3>
+                        
+                        <div style="space-y: 12px;">
+                            <div style="display: flex; justify-content: space-between; align-items: center; padding: 12px; background: var(--success-50); border-radius: 8px; margin-bottom: 8px;">
+                                <div style="display: flex; align-items: center; gap: 8px;">
+                                    <div style="width: 12px; height: 12px; border-radius: 50%; background: var(--success-500);"></div>
+                                    <span style="font-weight: 500; color: var(--gray-900);">Pagas</span>
+                                </div>
+                                <div style="text-align: right;">
+                                    <span style="font-weight: 600; color: var(--gray-900); font-size: 16px;">{{ stats.cobrancas_pagas or 0 }}</span>
+                                    <span style="color: var(--gray-500); font-size: 12px; margin-left: 4px;">parcelas</span>
+                                </div>
+                            </div>
+                            
+                            <div style="display: flex; justify-content: space-between; align-items: center; padding: 12px; background: var(--warning-50); border-radius: 8px; margin-bottom: 8px;">
+                                <div style="display: flex; align-items: center; gap: 8px;">
+                                    <div style="width: 12px; height: 12px; border-radius: 50%; background: var(--warning-500);"></div>
+                                    <span style="font-weight: 500; color: var(--gray-900);">A Pagar</span>
+                                </div>
+                                <div style="text-align: right;">
+                                    <span style="font-weight: 600; color: var(--gray-900); font-size: 16px;">{{ stats.cobrancas_pendentes - stats.cobrancas_vencidas }}</span>
+                                    <span style="color: var(--gray-500); font-size: 12px; margin-left: 4px;">parcelas</span>
+                                </div>
+                            </div>
+                            
+                            <div style="display: flex; justify-content: space-between; align-items: center; padding: 12px; background: var(--error-50); border-radius: 8px;">
+                                <div style="display: flex; align-items: center; gap: 8px;">
+                                    <div style="width: 12px; height: 12px; border-radius: 50%; background: var(--error-500);"></div>
+                                    <span style="font-weight: 500; color: var(--gray-900);">Vencidas</span>
+                                </div>
+                                <div style="text-align: right;">
+                                    <span style="font-weight: 600; color: var(--gray-900); font-size: 16px;">{{ stats.cobrancas_vencidas }}</span>
+                                    <span style="color: var(--gray-500); font-size: 12px; margin-left: 4px;">parcelas</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Valores Financeiros -->
+                        <div style="margin-top: 20px; padding-top: 16px; border-top: 1px solid var(--gray-200);">
+                            <h4 style="color: var(--gray-700); font-size: 14px; font-weight: 600; margin-bottom: 12px; text-transform: uppercase; letter-spacing: 0.025em;">
+                                Valores Financeiros
+                            </h4>
+                            
+                            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+                                <div style="text-align: center; padding: 12px; background: var(--primary-50); border-radius: 8px;">
+                                    <div style="font-size: 18px; font-weight: 700; color: var(--primary-600);">
+                                        R$ {{ "{:,.0f}".format(stats.valor_total_pendente).replace(',', 'X').replace('.', ',').replace('X', '.') }}
+                                    </div>
+                                    <div style="font-size: 12px; color: var(--primary-600); font-weight: 500;">A Receber</div>
+                                </div>
+                                
+                                <div style="text-align: center; padding: 12px; background: var(--success-50); border-radius: 8px;">
+                                    <div style="font-size: 18px; font-weight: 700; color: var(--success-600);">
+                                        R$ {{ "{:,.0f}".format(stats.valor_total_recebido).replace(',', 'X').replace('.', ',').replace('X', '.') }}
+                                    </div>
+                                    <div style="font-size: 12px; color: var(--success-600); font-weight: 500;">Recebido</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
         <!-- Recent Collections Table -->
         <div class="table-container">
             <div class="table-header">
@@ -1065,12 +1184,92 @@
     </div>
 
     <!-- Scripts -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/feather-icons/4.29.0/feather.min.js"></script>
+    <script src="https://unpkg.com/feather-icons"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script>
         // Initialize Feather Icons
         document.addEventListener('DOMContentLoaded', function() {
-            feather.replace();
+            try {
+                feather.replace();
+            } catch (error) {
+                console.log('Feather icons não carregados:', error);
+            }
+            // Aguardar um pouco para garantir que Chart.js carregou
+            setTimeout(initializeParcelasChart, 500);
         });
+
+        // Gráfico de Parcelas
+        function initializeParcelasChart() {
+            console.log('Iniciando gráfico de parcelas...');
+            
+            // Dados do gráfico
+            const pagas = {{ stats.cobrancas_pagas or 0 }};
+            const pendentes = {{ stats.cobrancas_pendentes }};
+            const vencidas = {{ stats.cobrancas_vencidas }};
+            const aPagar = pendentes - vencidas;
+            
+            console.log('Dados:', { pagas, pendentes, vencidas, aPagar });
+            
+            // Verificar se Chart.js está disponível
+            if (typeof Chart === 'undefined') {
+                console.error('Chart.js não está carregado!');
+                return;
+            }
+            
+            // Verificar se há dados
+            const total = pagas + aPagar + vencidas;
+            if (total === 0) {
+                console.log('Nenhum dado para exibir');
+                return;
+            }
+            
+            // Criar gráfico simples
+            const ctx = document.getElementById('parcelasChart');
+            if (!ctx) {
+                console.error('Canvas não encontrado');
+                return;
+            }
+            
+            try {
+                new Chart(ctx, {
+                    type: 'doughnut',
+                    data: {
+                        labels: ['Pagas', 'A pagar', 'Vencidas'],
+                        datasets: [{
+                            data: [pagas, aPagar, vencidas],
+                            backgroundColor: ['#10b981', '#f59e0b', '#ef4444'],
+                            borderWidth: 2,
+                            borderColor: '#ffffff'
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            legend: {
+                                position: 'bottom'
+                            }
+                        }
+                    }
+                });
+                console.log('Gráfico criado com sucesso!');
+                
+                // Esconder loading
+                const loading = document.getElementById('chart-loading');
+                if (loading) {
+                    loading.style.display = 'none';
+                }
+            } catch (error) {
+                console.error('Erro ao criar gráfico:', error);
+                
+                // Mostrar erro
+                const loading = document.getElementById('chart-loading');
+                if (loading) {
+                    loading.innerHTML = 'Erro ao carregar gráfico: ' + error.message;
+                    loading.style.color = 'var(--error-500)';
+                }
+            }
+        }
 
         // Close modal function
         function closeModal(modalId) {
@@ -1116,59 +1315,7 @@
             }
         });
 
-        // Auto-refresh stats every 30 seconds with visual feedback
-        setInterval(() => {
-            fetch('/api/dashboard/stats')
-                .then(response => response.json())
-                .then(data => {
-                    updateStatsCards(data);
-                })
-                .catch(error => {
-                    console.error('Erro ao atualizar estatísticas:', error);
-                });
-        }, 30000);
-
-        // Update stats cards with animation
-        function updateStatsCards(stats) {
-            if (stats) {
-                const cards = [
-                    { selector: '.stat-card.primary .stat-value', value: stats.total_clientes },
-                    { selector: '.stat-card.warning .stat-value', value: stats.cobrancas_pendentes },
-                    { selector: '.stat-card.danger .stat-value', value: stats.cobrancas_vencidas },
-                    { selector: '.stat-card.info .stat-value', value: stats.valor_total_pendente, format: 'currency' },
-                    { selector: '.stat-card.success .stat-value', value: stats.valor_total_recebido, format: 'currency' }
-                ];
-
-                cards.forEach(card => {
-                    const element = document.querySelector(card.selector);
-                    if (element && card.value !== undefined) {
-                        const currentValue = element.textContent;
-                        const newValue = card.format === 'currency' ? 
-                            formatCurrency(card.value) : 
-                            card.value.toString();
-
-                        if (currentValue !== newValue) {
-                            // Add pulse animation
-                            const statCard = element.closest('.stat-card');
-                            statCard.classList.add('updated');
-                            
-                            // Update value
-                            element.textContent = newValue;
-                            
-                            // Remove animation class after animation completes
-                            setTimeout(() => {
-                                statCard.classList.remove('updated');
-                            }, 600);
-                        }
-                    }
-                });
-            }
-        }
-
-        // Format currency for display
-        function formatCurrency(value) {
-            return `R$ ${value.toFixed(2).replace(',', 'X').replace('.', ',').replace('X', '.')}`;
-        }
+        // Auto-refresh removido - causava erro 404
 
         // Form validation
         function validatePagamentoForm() {
@@ -1310,58 +1457,7 @@
             });
         });
 
-        // Performance optimization: Lazy load non-critical features
-        window.addEventListener('load', function() {
-            // Initialize advanced features after page load
-            initializeAdvancedFeatures();
-        });
-
-        function initializeAdvancedFeatures() {
-            // Add subtle parallax effect to header
-            window.addEventListener('scroll', function() {
-                const scrolled = window.pageYOffset;
-                const header = document.querySelector('.header');
-                if (header && scrolled > 0) {
-                    header.style.transform = `translateY(${scrolled * 0.1}px)`;
-                }
-            });
-
-            // Add intersection observer for animations
-            if ('IntersectionObserver' in window) {
-                const observer = new IntersectionObserver((entries) => {
-                    entries.forEach(entry => {
-                        if (entry.isIntersecting) {
-                            entry.target.style.opacity = '1';
-                            entry.target.style.transform = 'translateY(0)';
-                        }
-                    });
-                });
-
-                document.querySelectorAll('.stat-card, .table-container').forEach(el => {
-                    el.style.opacity = '0';
-                    el.style.transform = 'translateY(20px)';
-                    el.style.transition = 'opacity 0.6s ease, transform 0.6s ease';
-                    observer.observe(el);
-                });
-            }
-        }
-
-        // Service Worker for offline capabilities (optional)
-        if ('serviceWorker' in navigator) {
-            window.addEventListener('load', function() {
-                navigator.serviceWorker.register('/static/sw.js').then(function(registration) {
-                    console.log('ServiceWorker registration successful');
-                }).catch(function(err) {
-                    console.log('ServiceWorker registration failed');
-                });
-            });
-        }
-
-        // Error handling for failed requests
-        window.addEventListener('unhandledrejection', function(event) {
-            console.error('Unhandled promise rejection:', event.reason);
-            showToast('Ocorreu um erro inesperado. Tente novamente.', 'error');
-        });
+        // Funcionalidades avançadas removidas para evitar conflitos
     </script>
 </body>
 </html>

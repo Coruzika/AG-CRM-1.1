@@ -1,0 +1,302 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard - Gráfico de Parcelas</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        .chart-container {
+            position: relative;
+            height: 400px;
+            width: 100%;
+        }
+    </style>
+</head>
+<body class="bg-gray-50">
+    <div class="min-h-screen py-8">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <!-- Header -->
+            <div class="mb-8">
+                <h1 class="text-3xl font-bold text-gray-900">Dashboard CRM</h1>
+                <p class="mt-2 text-gray-600">Visualização das parcelas dos clientes</p>
+            </div>
+
+            <!-- Seletor de Cliente -->
+            <div class="mb-8">
+                <div class="bg-white rounded-lg shadow p-6">
+                    <h2 class="text-lg font-semibold text-gray-900 mb-4">Selecionar Cliente</h2>
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-4" id="clientes-container">
+                        {% for cliente in clientes %}
+                        <button onclick="selecionarCliente({{ loop.index0 }})" id="cliente-{{ loop.index0 }}" 
+                                class="p-4 rounded-lg border-2 {% if loop.first %}border-blue-500 bg-blue-50{% else %}border-gray-200 hover:border-gray-300{% endif %} transition-all duration-200">
+                            <h3 class="font-medium text-gray-900">{{ cliente.nome }}</h3>
+                            <p class="text-sm text-gray-600 mt-1">{{ cliente.total_parcelas }} parcelas totais</p>
+                        </button>
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+
+            <!-- Gráfico Principal -->
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                <!-- Gráfico de Pizza -->
+                <div class="bg-white rounded-lg shadow-lg p-6">
+                    <div class="text-center mb-4">
+                        <h3 class="text-lg font-semibold text-gray-900 mb-2">Status das Parcelas</h3>
+                        <p class="text-sm text-gray-600" id="total-parcelas">Total: 11 parcelas</p>
+                    </div>
+                    
+                    <div class="chart-container">
+                        <canvas id="parcelasChart"></canvas>
+                    </div>
+                    
+                    <!-- Resumo dos dados -->
+                    <div class="mt-4 pt-4 border-t border-gray-200">
+                        <div class="grid grid-cols-1 gap-2" id="resumo-dados">
+                            <!-- Será preenchido pelo JavaScript -->
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Informações Detalhadas -->
+                <div class="bg-white rounded-lg shadow-lg p-6">
+                    <h2 class="text-lg font-semibold text-gray-900 mb-4" id="nome-cliente">Detalhes - João Silva</h2>
+                    
+                    <div class="space-y-4" id="detalhes-cliente">
+                        <!-- Será preenchido pelo JavaScript -->
+                    </div>
+
+                    <!-- Resumo Geral -->
+                    <div class="mt-6 pt-6 border-t border-gray-200">
+                        <h3 class="font-medium text-gray-900 mb-3">Resumo Geral</h3>
+                        <div class="grid grid-cols-2 gap-4">
+                            <div class="text-center p-3 bg-green-50 rounded-lg">
+                                <div class="text-2xl font-bold text-green-600" id="total-pagas">8</div>
+                                <div class="text-sm text-green-700">Pagas</div>
+                            </div>
+                            <div class="text-center p-3 bg-blue-50 rounded-lg">
+                                <div class="text-2xl font-bold text-blue-600" id="total-a-pagar">2</div>
+                                <div class="text-sm text-blue-700">A Pagar</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Cards de Estatísticas Gerais -->
+            <div class="mt-8 grid grid-cols-1 md:grid-cols-3 gap-6">
+                <div class="bg-white rounded-lg shadow p-6">
+                    <div class="flex items-center">
+                        <div class="p-2 bg-green-100 rounded-lg">
+                            <svg class="w-6 h-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                            </svg>
+                        </div>
+                        <div class="ml-4">
+                            <p class="text-sm font-medium text-gray-600">Total Pagas</p>
+                            <p class="text-2xl font-semibold text-gray-900" id="stats-pagas">{{ stats.total_pagas }}</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="bg-white rounded-lg shadow p-6">
+                    <div class="flex items-center">
+                        <div class="p-2 bg-blue-100 rounded-lg">
+                            <svg class="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                            </svg>
+                        </div>
+                        <div class="ml-4">
+                            <p class="text-sm font-medium text-gray-600">A Pagar</p>
+                            <p class="text-2xl font-semibold text-gray-900" id="stats-a-pagar">{{ stats.total_a_pagar }}</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="bg-white rounded-lg shadow p-6">
+                    <div class="flex items-center">
+                        <div class="p-2 bg-red-100 rounded-lg">
+                            <svg class="w-6 h-6 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z" />
+                            </svg>
+                        </div>
+                        <div class="ml-4">
+                            <p class="text-sm font-medium text-gray-600">Vencidas</p>
+                            <p class="text-2xl font-semibold text-gray-900" id="stats-vencidas">{{ stats.total_vencidas }}</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Dados dos clientes vindos do Flask
+        const clientesData = [
+            {% for cliente in clientes %}
+            {
+                id: {{ cliente.id }},
+                nome: '{{ cliente.nome }}',
+                parcelas: [
+                    { name: 'Pagas', value: {{ cliente.parcelas_pagas or 0 }} },
+                    { name: 'A pagar', value: {{ cliente.parcelas_a_pagar or 0 }} },
+                    { name: 'Vencidas', value: {{ cliente.parcelas_vencidas or 0 }} }
+                ]
+            }{% if not loop.last %},{% endif %}
+            {% endfor %}
+        ];
+
+        // Estatísticas gerais
+        const statsGerais = {
+            total_pagas: {{ stats.total_pagas }},
+            total_a_pagar: {{ stats.total_a_pagar }},
+            total_vencidas: {{ stats.total_vencidas }}
+        };
+
+        let chart = null;
+        let clienteSelecionado = 0;
+
+        // Cores para o gráfico
+        const cores = {
+            'Pagas': '#10B981',
+            'A pagar': '#3B82F6',
+            'Vencidas': '#EF4444'
+        };
+
+        // Função para criar/atualizar o gráfico
+        function criarGrafico(dados) {
+            const ctx = document.getElementById('parcelasChart').getContext('2d');
+            
+            if (chart) {
+                chart.destroy();
+            }
+
+            chart = new Chart(ctx, {
+                type: 'doughnut',
+                data: {
+                    labels: dados.map(item => item.name),
+                    datasets: [{
+                        data: dados.map(item => item.value),
+                        backgroundColor: dados.map(item => cores[item.name]),
+                        borderWidth: 2,
+                        borderColor: '#ffffff'
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            position: 'bottom',
+                            labels: {
+                                padding: 20,
+                                usePointStyle: true,
+                                font: {
+                                    size: 14,
+                                    weight: 'bold'
+                                }
+                            }
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    const total = context.dataset.data.reduce((a, b) => a + b, 0);
+                                    const percentage = ((context.parsed / total) * 100).toFixed(1);
+                                    return `${context.label}: ${context.parsed} (${percentage}%)`;
+                                }
+                            }
+                        }
+                    },
+                    cutout: '60%'
+                }
+            });
+        }
+
+        // Função para atualizar os detalhes do cliente
+        function atualizarDetalhes(cliente) {
+            const total = cliente.parcelas.reduce((sum, item) => sum + item.value, 0);
+            
+            // Atualizar nome do cliente
+            document.getElementById('nome-cliente').textContent = `Detalhes - ${cliente.nome}`;
+            
+            // Atualizar total de parcelas
+            document.getElementById('total-parcelas').textContent = `Total: ${total} parcelas`;
+            
+            // Atualizar detalhes
+            const detalhesHtml = cliente.parcelas.map(item => {
+                const percentage = ((item.value / total) * 100).toFixed(1);
+                const corClass = item.name === 'Pagas' ? 'bg-green-500' : 
+                                item.name === 'A pagar' ? 'bg-blue-500' : 'bg-red-500';
+                
+                return `
+                    <div class="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                        <div class="flex items-center gap-3">
+                            <div class="w-4 h-4 rounded-full ${corClass}"></div>
+                            <span class="font-medium text-gray-900">${item.name}</span>
+                        </div>
+                        <div class="text-right">
+                            <span class="text-lg font-bold text-gray-900">${item.value}</span>
+                            <span class="text-sm text-gray-500 ml-2">(${percentage}%)</span>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+            
+            document.getElementById('detalhes-cliente').innerHTML = detalhesHtml;
+            
+            // Atualizar resumo geral
+            const pagas = cliente.parcelas.find(p => p.name === 'Pagas')?.value || 0;
+            const aPagar = cliente.parcelas.find(p => p.name === 'A pagar')?.value || 0;
+            
+            document.getElementById('total-pagas').textContent = pagas;
+            document.getElementById('total-a-pagar').textContent = aPagar;
+            
+            // Atualizar resumo dos dados
+            const resumoHtml = cliente.parcelas.map(item => {
+                const percentage = ((item.value / total) * 100).toFixed(1);
+                const corClass = item.name === 'Pagas' ? 'bg-green-500' : 
+                                item.name === 'A pagar' ? 'bg-blue-500' : 'bg-red-500';
+                
+                return `
+                    <div class="flex justify-between items-center text-sm">
+                        <div class="flex items-center gap-2">
+                            <div class="w-2 h-2 rounded-full ${corClass}"></div>
+                            <span class="text-gray-700">${item.name}</span>
+                        </div>
+                        <div class="text-right">
+                            <span class="font-medium text-gray-900">${item.value}</span>
+                            <span class="text-gray-500 ml-1">(${percentage}%)</span>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+            
+            document.getElementById('resumo-dados').innerHTML = resumoHtml;
+        }
+
+        // Função para selecionar cliente
+        function selecionarCliente(index) {
+            clienteSelecionado = index;
+            
+            // Atualizar botões
+            document.querySelectorAll('[id^="cliente-"]').forEach(btn => {
+                btn.className = 'p-4 rounded-lg border-2 border-gray-200 hover:border-gray-300 transition-all duration-200';
+            });
+            
+            document.getElementById(`cliente-${index}`).className = 'p-4 rounded-lg border-2 border-blue-500 bg-blue-50 transition-all duration-200';
+            
+            // Atualizar gráfico e detalhes
+            const cliente = clientesData[index];
+            criarGrafico(cliente.parcelas);
+            atualizarDetalhes(cliente);
+        }
+
+        // Inicializar com o primeiro cliente
+        document.addEventListener('DOMContentLoaded', function() {
+            selecionarCliente(0);
+        });
+    </script>
+</body>
+</html>

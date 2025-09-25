@@ -191,6 +191,12 @@
                         Relatórios
                     </a>
                 </li>
+                <li class="nav-item">
+                    <a href="{{ url_for('dashboard_parcelas') }}" class="nav-link {{ 'active' if request.endpoint == 'dashboard_parcelas' }}">
+                        <i class="fas fa-chart-pie"></i>
+                        Gráfico Parcelas
+                    </a>
+                </li>
                 {% if session.get('usuario_tipo') == 'admin' %}
                 <li class="nav-item">
                     <a href="{{ url_for('listar_usuarios') }}" class="nav-link {{ 'active' if request.endpoint in ['listar_usuarios', 'adicionar_usuario', 'editar_usuario'] }}">
