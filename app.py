@@ -467,6 +467,96 @@ def visualizar_cliente(cliente_id):
                          cobrancas=cobrancas,
                          historico=historico)
 
+@app.route('/cliente/<int:cliente_id>/editar', methods=['GET', 'POST'])
+@login_required
+def editar_cliente(cliente_id):
+    """Edita um cliente existente."""
+    conn = get_db()
+    cur = conn.cursor(row_factory=dict_row)
+    
+    cur.execute('SELECT * FROM clientes WHERE id = %s', (cliente_id,))
+    cliente = cur.fetchone()
+    if not cliente:
+        flash('Cliente não encontrado.', 'danger')
+        cur.close()
+        conn.close()
+        return redirect(url_for('listar_clientes'))
+    
+    if request.method == 'POST':
+        dados = {
+            'nome': request.form['nome'],
+            'cpf_cnpj': request.form.get('cpf_cnpj', ''),
+            'email': request.form.get('email', ''),
+            'telefone': request.form['telefone'],
+            'telefone_secundario': request.form.get('telefone_secundario', ''),
+            'endereco': request.form.get('endereco', ''),
+            'cidade': request.form.get('cidade', ''),
+            'estado': request.form.get('estado', ''),
+            'cep': request.form.get('cep', ''),
+            'observacoes': request.form.get('observacoes', '')
+        }
+        
+        # Validação
+        if dados['cpf_cnpj'] and not validar_cpf_cnpj(dados['cpf_cnpj']):
+            flash('CPF/CNPJ inválido.', 'danger')
+            cur.close()
+            conn.close()
+            return render_template('cliente_form.html', cliente=dados)
+        
+        try:
+            cur.execute('''
+                UPDATE clientes 
+                SET nome=%s, cpf_cnpj=%s, email=%s, telefone=%s, telefone_secundario=%s,
+                    endereco=%s, cidade=%s, estado=%s, cep=%s, observacoes=%s,
+                    atualizado_em=CURRENT_TIMESTAMP
+                WHERE id=%s
+            ''', (dados['nome'], dados['cpf_cnpj'], dados['email'], dados['telefone'], 
+                 dados['telefone_secundario'], dados['endereco'], dados['cidade'], 
+                 dados['estado'], dados['cep'], dados['observacoes'], cliente_id))
+            conn.commit()
+            flash('Cliente atualizado com sucesso!', 'success')
+            cur.close()
+            conn.close()
+            return redirect(url_for('listar_clientes'))
+        except UniqueViolation:
+            flash('CPF/CNPJ já cadastrado.', 'danger')
+        finally:
+            cur.close()
+            conn.close()
+    
+    cur.close()
+    conn.close()
+    return render_template('cliente_form.html', cliente=cliente)
+
+@app.route('/cliente/<int:cliente_id>/deletar', methods=['POST'])
+@login_required
+def deletar_cliente(cliente_id):
+    """Deleta um cliente e todas suas cobranças relacionadas."""
+    conn = get_db()
+    cur = conn.cursor(row_factory=dict_row)
+    
+    # Verificar se o cliente existe
+    cur.execute('SELECT nome FROM clientes WHERE id = %s', (cliente_id,))
+    cliente = cur.fetchone()
+    if not cliente:
+        flash('Cliente não encontrado.', 'danger')
+        cur.close()
+        conn.close()
+        return redirect(url_for('listar_clientes'))
+    
+    try:
+        # Deletar cliente (cascata deletará cobranças e histórico)
+        cur.execute('DELETE FROM clientes WHERE id = %s', (cliente_id,))
+        conn.commit()
+        flash(f'Cliente "{cliente["nome"]}" e todas as cobranças relacionadas foram excluídos com sucesso!', 'success')
+    except Exception as e:
+        flash(f'Erro ao excluir cliente: {str(e)}', 'danger')
+    finally:
+        cur.close()
+        conn.close()
+    
+    return redirect(url_for('listar_clientes'))
+
 @app.route('/cobranca/adicionar', methods=['GET', 'POST'])
 @login_required
 def adicionar_cobranca():
@@ -487,6 +577,12 @@ def adicionar_cobranca():
             'tipo_cobranca': request.form.get('tipo_cobranca', 'Única'),
             'numero_parcelas': int(request.form.get('numero_parcelas', 1))
         }
+        
+        # Validar se a data de vencimento não é domingo
+        data_venc = datetime.strptime(dados['data_vencimento'], '%Y-%m-%d')
+        if data_venc.weekday() == 6:  # 6 = domingo (0=segunda, 6=domingo)
+            flash('Domingos não são permitidos para data de vencimento. Selecione outro dia.', 'danger')
+            return render_template('cobranca_form.html', clientes=clientes, cobranca=None)
         
         conn = get_db()
         cur = conn.cursor()

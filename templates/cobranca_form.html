@@ -162,6 +162,112 @@
             display: none;
         }
 
+        /* Custom Datepicker Styles */
+        .datepicker-container {
+            position: relative;
+        }
+
+        .datepicker {
+            position: absolute;
+            top: 100%;
+            left: 0;
+            background: white;
+            border: 2px solid #e2e8f0;
+            border-radius: 8px;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+            z-index: 1000;
+            display: none;
+            padding: 15px;
+            min-width: 280px;
+        }
+
+        .datepicker-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+        }
+
+        .datepicker-nav {
+            background: none;
+            border: none;
+            font-size: 18px;
+            cursor: pointer;
+            padding: 5px;
+            color: #667eea;
+        }
+
+        .datepicker-nav:hover {
+            background: #f7fafc;
+            border-radius: 4px;
+        }
+
+        .datepicker-month-year {
+            font-weight: 600;
+            color: #4a5568;
+        }
+
+        .datepicker-grid {
+            display: grid;
+            grid-template-columns: repeat(7, 1fr);
+            gap: 2px;
+        }
+
+        .datepicker-day-header {
+            text-align: center;
+            font-weight: 600;
+            color: #4a5568;
+            padding: 8px 4px;
+            font-size: 12px;
+        }
+
+        .datepicker-day {
+            text-align: center;
+            padding: 8px 4px;
+            cursor: pointer;
+            border-radius: 4px;
+            font-size: 14px;
+            transition: all 0.2s;
+        }
+
+        .datepicker-day:hover {
+            background: #f7fafc;
+        }
+
+        .datepicker-day.disabled {
+            color: #cbd5e0;
+            cursor: not-allowed;
+            background: #f7fafc;
+        }
+
+        .datepicker-day.disabled:hover {
+            background: #f7fafc;
+        }
+
+        .datepicker-day.today {
+            background: #667eea;
+            color: white;
+        }
+
+        .datepicker-day.selected {
+            background: #48bb78;
+            color: white;
+        }
+
+        .datepicker-day.other-month {
+            color: #cbd5e0;
+        }
+
+        .datepicker-day.sunday {
+            color: #f56565;
+            font-weight: bold;
+        }
+
+        .datepicker-day.sunday.disabled {
+            color: #fed7d7;
+            background: #fef5e7;
+        }
+
         @media (max-width: 768px) {
             .header {
                 flex-direction: column;
@@ -215,8 +321,15 @@
 
                     <div class="form-group">
                         <label for="data_vencimento">Data de Vencimento <span class="required">*</span></label>
-                        <input type="date" id="data_vencimento" name="data_vencimento" 
-                               value="{{ cobranca.data_vencimento if cobranca else '' }}" required>
+                        <div class="datepicker-container">
+                            <input type="text" id="data_vencimento" name="data_vencimento" 
+                                   value="{{ cobranca.data_vencimento if cobranca else '' }}" 
+                                   placeholder="DD-MM-AAAA (domingos não disponíveis)" required readonly>
+                            <div id="datepicker" class="datepicker"></div>
+                        </div>
+                        <small style="color: #666; font-size: 12px; margin-top: 5px; display: block;">
+                            Domingos não estão disponíveis para vencimento
+                        </small>
                     </div>
 
                     <div class="form-group">
@@ -251,10 +364,225 @@
             parcelasDiv.style.display = tipo === 'Parcelada' ? 'block' : 'none';
         }
 
+        // Custom Datepicker Class
+        class CustomDatepicker {
+            constructor(inputId, datepickerId) {
+                this.input = document.getElementById(inputId);
+                this.datepicker = document.getElementById(datepickerId);
+                this.currentDate = new Date();
+                this.selectedDate = null;
+                this.monthNames = [
+                    'Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
+                    'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'
+                ];
+                this.dayNames = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
+                
+                this.init();
+            }
+
+            init() {
+                // Make input clickable to open datepicker
+                this.input.addEventListener('click', () => this.toggle());
+                
+                // Close datepicker when clicking outside
+                document.addEventListener('click', (e) => {
+                    if (!this.input.contains(e.target) && !this.datepicker.contains(e.target)) {
+                        this.hide();
+                    }
+                });
+
+                // Initialize with current date if no value
+                if (!this.input.value) {
+                    this.currentDate = new Date();
+                } else {
+                    // Parse DD-MM-YYYY format
+                    const parsedDate = this.parseDateDDMMYYYY(this.input.value);
+                    this.currentDate = parsedDate || new Date();
+                }
+
+                this.render();
+            }
+
+            toggle() {
+                if (this.datepicker.style.display === 'none' || this.datepicker.style.display === '') {
+                    this.show();
+                } else {
+                    this.hide();
+                }
+            }
+
+            show() {
+                this.datepicker.style.display = 'block';
+                this.datepicker.style.visibility = 'visible';
+                // Only render if content is empty or needs update
+                if (!this.datepicker.innerHTML.trim()) {
+                    this.render();
+                }
+            }
+
+            hide() {
+                this.datepicker.style.display = 'none';
+                this.datepicker.style.visibility = 'hidden';
+            }
+
+            render() {
+                const year = this.currentDate.getFullYear();
+                const month = this.currentDate.getMonth();
+                
+                // Store current visibility state
+                const isVisible = this.datepicker.style.display !== 'none';
+                
+                // Header
+                this.datepicker.innerHTML = `
+                    <div class="datepicker-header">
+                        <button class="datepicker-nav" onclick="datepicker.previousMonth()">‹</button>
+                        <div class="datepicker-month-year">${this.monthNames[month]} ${year}</div>
+                        <button class="datepicker-nav" onclick="datepicker.nextMonth()">›</button>
+                    </div>
+                    <div class="datepicker-grid">
+                        ${this.dayNames.map(day => `<div class="datepicker-day-header">${day}</div>`).join('')}
+                        ${this.renderDays(year, month)}
+                    </div>
+                `;
+                
+                // Restore visibility state
+                if (isVisible) {
+                    this.datepicker.style.display = 'block';
+                    this.datepicker.style.visibility = 'visible';
+                }
+            }
+
+            renderDays(year, month) {
+                const firstDay = new Date(year, month, 1);
+                const lastDay = new Date(year, month + 1, 0);
+                const daysInMonth = lastDay.getDate();
+                const startingDayOfWeek = firstDay.getDay();
+                
+                let days = '';
+                
+                // Previous month days
+                const prevMonth = new Date(year, month - 1, 0);
+                for (let i = startingDayOfWeek - 1; i >= 0; i--) {
+                    const day = prevMonth.getDate() - i;
+                    days += `<div class="datepicker-day other-month">${day}</div>`;
+                }
+                
+                // Current month days
+                const today = new Date();
+                for (let day = 1; day <= daysInMonth; day++) {
+                    const date = new Date(year, month, day);
+                    const isToday = date.toDateString() === today.toDateString();
+                    const isSunday = date.getDay() === 0;
+                    const isPast = date < today.setHours(0, 0, 0, 0);
+                    const isSelected = this.selectedDate && date.toDateString() === this.selectedDate.toDateString();
+                    
+                    let classes = 'datepicker-day';
+                    if (isToday) classes += ' today';
+                    if (isSelected) classes += ' selected';
+                    if (isSunday) classes += ' sunday disabled';
+                    if (isPast) classes += ' disabled';
+                    
+                    const clickHandler = (isSunday || isPast) ? '' : `onclick="datepicker.selectDate(${year}, ${month}, ${day})"`;
+                    
+                    days += `<div class="${classes}" ${clickHandler}>${day}</div>`;
+                }
+                
+                // Next month days
+                const remainingDays = 42 - (startingDayOfWeek + daysInMonth);
+                for (let day = 1; day <= remainingDays; day++) {
+                    days += `<div class="datepicker-day other-month">${day}</div>`;
+                }
+                
+                return days;
+            }
+
+            selectDate(year, month, day) {
+                const selectedDate = new Date(year, month, day);
+                this.selectedDate = selectedDate;
+                // Format as DD-MM-YYYY
+                const formattedDate = this.formatDateDDMMYYYY(selectedDate);
+                this.input.value = formattedDate;
+                this.hide();
+            }
+
+            formatDateDDMMYYYY(date) {
+                const day = String(date.getDate()).padStart(2, '0');
+                const month = String(date.getMonth() + 1).padStart(2, '0');
+                const year = date.getFullYear();
+                return `${day}-${month}-${year}`;
+            }
+
+            parseDateDDMMYYYY(dateString) {
+                if (!dateString) return null;
+                const parts = dateString.split('-');
+                if (parts.length === 3) {
+                    const day = parseInt(parts[0], 10);
+                    const month = parseInt(parts[1], 10) - 1; // Month is 0-indexed
+                    const year = parseInt(parts[2], 10);
+                    return new Date(year, month, day);
+                }
+                return null;
+            }
+
+            previousMonth() {
+                this.currentDate.setMonth(this.currentDate.getMonth() - 1);
+                // Just render without changing visibility
+                this.render();
+            }
+
+            nextMonth() {
+                this.currentDate.setMonth(this.currentDate.getMonth() + 1);
+                // Just render without changing visibility
+                this.render();
+            }
+        }
+
+        // Helper functions for date format conversion
+        function parseDateDDMMYYYY(dateString) {
+            if (!dateString) return null;
+            const parts = dateString.split('-');
+            if (parts.length === 3) {
+                const day = parseInt(parts[0], 10);
+                const month = parseInt(parts[1], 10) - 1; // Month is 0-indexed
+                const year = parseInt(parts[2], 10);
+                return new Date(year, month, day);
+            }
+            return null;
+        }
+
+        function convertToBackendFormat(dateString) {
+            if (!dateString) return '';
+            const parts = dateString.split('-');
+            if (parts.length === 3) {
+                const day = parts[0];
+                const month = parts[1];
+                const year = parts[2];
+                return `${year}-${month}-${day}`;
+            }
+            return dateString;
+        }
+
+        function convertFromBackendFormat(dateString) {
+            if (!dateString) return '';
+            const parts = dateString.split('-');
+            if (parts.length === 3) {
+                const year = parts[0];
+                const month = parts[1];
+                const day = parts[2];
+                return `${day}-${month}-${year}`;
+            }
+            return dateString;
+        }
+
         document.addEventListener('DOMContentLoaded', function() {
-            // Set minimum date to today
-            const today = new Date().toISOString().split('T')[0];
-            document.getElementById('data_vencimento').min = today;
+            // Convert existing value from backend format to display format
+            const dataInput = document.getElementById('data_vencimento');
+            if (dataInput.value && dataInput.value.includes('-') && dataInput.value.split('-')[0].length === 4) {
+                dataInput.value = convertFromBackendFormat(dataInput.value);
+            }
+
+            // Initialize custom datepicker
+            window.datepicker = new CustomDatepicker('data_vencimento', 'datepicker');
 
             // Initialize parcelas visibility
             toggleParcelas();
@@ -283,15 +611,29 @@
                     return;
                 }
 
+                // Convert DD-MM-YYYY to YYYY-MM-DD for backend
+                const convertedDate = convertToBackendFormat(dataVencimento);
+                
+                // Check if date is Sunday (additional validation)
+                const selectedDate = parseDateDDMMYYYY(dataVencimento);
+                if (selectedDate && selectedDate.getDay() === 0) {
+                    e.preventDefault();
+                    alert('Domingos não são permitidos para data de vencimento. Selecione outro dia.');
+                    return;
+                }
+
                 // Check if date is not in the past
                 const today = new Date();
-                const vencimento = new Date(dataVencimento);
-                if (vencimento < today) {
+                const vencimento = parseDateDDMMYYYY(dataVencimento);
+                if (vencimento && vencimento < today) {
                     if (!confirm('A data de vencimento está no passado. Deseja continuar?')) {
                         e.preventDefault();
                         return;
                     }
                 }
+
+                // Update the input value to backend format before submission
+                document.getElementById('data_vencimento').value = convertedDate;
             });
         });
     </script>
