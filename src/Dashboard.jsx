@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import ParcelasPieChart from './components/ParcelasPieChart';
+import CalendarioVencimentos from './components/CalendarioVencimentos';
 
 const Dashboard = () => {
   // Dados de exemplo para o gráfico de parcelas
@@ -137,6 +138,11 @@ const Dashboard = () => {
               </div>
             </div>
           </div>
+        </div>
+
+        {/* Calendário de Vencimentos */}
+        <div className="mt-8">
+          <CalendarioVencimentos />
         </div>
 
         {/* Cards de Estatísticas Gerais */}

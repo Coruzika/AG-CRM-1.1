@@ -197,6 +197,12 @@
                         Gráfico Parcelas
                     </a>
                 </li>
+                <li class="nav-item">
+                    <a href="{{ url_for('calendario') }}" class="nav-link {{ 'active' if request.endpoint == 'calendario' }}">
+                        <i class="fas fa-calendar-alt"></i>
+                        Calendário
+                    </a>
+                </li>
                 {% if session.get('usuario_tipo') == 'admin' %}
                 <li class="nav-item">
                     <a href="{{ url_for('listar_usuarios') }}" class="nav-link {{ 'active' if request.endpoint in ['listar_usuarios', 'adicionar_usuario', 'editar_usuario'] }}">

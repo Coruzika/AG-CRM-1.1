@@ -6,6 +6,15 @@
     <title>Dashboard - Gráfico de Parcelas</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
+    <!-- FullCalendar CSS - com cache busting -->
+    <link href="https://cdn.jsdelivr.net/npm/@fullcalendar/core@6.1.19/main.min.css?v=1" rel="stylesheet" crossorigin="anonymous">
+    <link href="https://cdn.jsdelivr.net/npm/@fullcalendar/daygrid@6.1.19/main.min.css?v=1" rel="stylesheet" crossorigin="anonymous">
+    <link href="https://cdn.jsdelivr.net/npm/@fullcalendar/timegrid@6.1.19/main.min.css?v=1" rel="stylesheet" crossorigin="anonymous">
+    <!-- FullCalendar JS - com cache busting -->
+    <script src="https://cdn.jsdelivr.net/npm/@fullcalendar/core@6.1.19/main.min.js?v=1" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@fullcalendar/daygrid@6.1.19/main.min.js?v=1" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@fullcalendar/timegrid@6.1.19/main.min.js?v=1" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@fullcalendar/interaction@6.1.19/main.min.js?v=1" crossorigin="anonymous"></script>
     <style>
         .chart-container {
             position: relative;
@@ -125,6 +134,82 @@
                         <div class="ml-4">
                             <p class="text-sm font-medium text-gray-600">Vencidas</p>
                             <p class="text-2xl font-semibold text-gray-900" id="stats-vencidas">{{ stats.total_vencidas }}</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Calendário de Vencimentos -->
+            <div class="mt-8">
+                <div class="bg-white rounded-lg shadow-lg p-6">
+                    <div class="mb-6">
+                        <h2 class="text-2xl font-bold text-gray-900 mb-2">
+                            📅 Calendário de Vencimentos
+                        </h2>
+                        <p class="text-gray-600">
+                            Visualize as datas de vencimento das parcelas dos clientes
+                        </p>
+                    </div>
+
+                    <!-- Legenda -->
+                    <div class="mb-4 flex flex-wrap gap-4 text-sm">
+                        <div class="flex items-center gap-2">
+                            <div class="w-4 h-4 rounded-full bg-green-500"></div>
+                            <span class="text-gray-700">Pagas</span>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <div class="w-4 h-4 rounded-full bg-red-500"></div>
+                            <span class="text-gray-700">Vencidas</span>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <div class="w-4 h-4 rounded-full bg-blue-500"></div>
+                            <span class="text-gray-700">A Pagar</span>
+                        </div>
+                    </div>
+
+                    <!-- Calendário -->
+                    <div class="rounded-lg overflow-hidden shadow-sm border border-gray-200">
+                        <div id="calendar"></div>
+                    </div>
+
+                    <!-- Debug Info -->
+                    <div class="mt-4 bg-blue-100 border border-blue-400 text-blue-800 p-4 rounded">
+                        <h3 class="font-bold">🔍 Debug Info:</h3>
+                        <p>FullCalendar carregado: <span id="fullcalendar-status" class="font-bold">Verificando...</span></p>
+                        <p>Calendário inicializado: <span id="calendar-status" class="font-bold">Verificando...</span></p>
+                        <p>Eventos criados: <span id="events-status" class="font-bold">Verificando...</span></p>
+                    </div>
+
+                    <!-- Estatísticas rápidas do calendário -->
+                    <div class="mt-6 grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <div class="bg-green-50 rounded-lg p-4">
+                            <div class="flex items-center">
+                                <div class="w-3 h-3 bg-green-500 rounded-full mr-2"></div>
+                                <span class="text-sm font-medium text-green-800">Pagas</span>
+                            </div>
+                            <div class="text-2xl font-bold text-green-600 mt-1" id="cal-pagas">
+                                {{ stats.total_pagas }}
+                            </div>
+                        </div>
+                        
+                        <div class="bg-red-50 rounded-lg p-4">
+                            <div class="flex items-center">
+                                <div class="w-3 h-3 bg-red-500 rounded-full mr-2"></div>
+                                <span class="text-sm font-medium text-red-800">Vencidas</span>
+                            </div>
+                            <div class="text-2xl font-bold text-red-600 mt-1" id="cal-vencidas">
+                                {{ stats.total_vencidas }}
+                            </div>
+                        </div>
+                        
+                        <div class="bg-blue-50 rounded-lg p-4">
+                            <div class="flex items-center">
+                                <div class="w-3 h-3 bg-blue-500 rounded-full mr-2"></div>
+                                <span class="text-sm font-medium text-blue-800">A Pagar</span>
+                            </div>
+                            <div class="text-2xl font-bold text-blue-600 mt-1" id="cal-a-pagar">
+                                {{ stats.total_a_pagar }}
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -293,10 +378,138 @@
             atualizarDetalhes(cliente);
         }
 
+        // Verificar se FullCalendar está carregado
+        if (typeof FullCalendar !== 'undefined') {
+            document.getElementById('fullcalendar-status').textContent = '✅ Carregado';
+            console.log('✅ FullCalendar carregado com sucesso!');
+        } else {
+            document.getElementById('fullcalendar-status').textContent = '❌ Não carregado';
+            console.error('❌ FullCalendar não foi carregado!');
+        }
+
         // Inicializar com o primeiro cliente
         document.addEventListener('DOMContentLoaded', function() {
             selecionarCliente(0);
+            inicializarCalendario();
         });
+
+        // Dados das parcelas para o calendário
+        const parcelasCalendario = [
+            {% for parcela in parcelas %}
+            {
+                id: {{ parcela.id }},
+                numero: {{ parcela.numero_parcela }},
+                valor: {{ parcela.valor }},
+                dataVencimento: '{{ parcela.data_vencimento }}',
+                status: '{{ parcela.status }}',
+                cliente: '{{ parcela.cliente_nome }}'
+            }{% if not loop.last %},{% endif %}
+            {% endfor %}
+        ];
+
+        // Função para inicializar o calendário
+        function inicializarCalendario() {
+            console.log('🎯 Inicializando calendário...');
+            
+            const calendarEl = document.getElementById('calendar');
+            
+            if (!calendarEl) {
+                console.error('❌ Elemento calendar não encontrado!');
+                return;
+            }
+
+            console.log('✅ Elemento calendar encontrado!');
+
+            // Verificar se FullCalendar está disponível
+            if (typeof FullCalendar === 'undefined') {
+                console.error('❌ FullCalendar não está disponível!');
+                calendarEl.innerHTML = '<div class="p-8 text-center text-red-600"><h3 class="text-xl font-bold">Erro: FullCalendar não carregado</h3><p>Recarregue a página (Ctrl+F5)</p></div>';
+                return;
+            }
+
+            console.log('✅ FullCalendar disponível!');
+
+            // Converter parcelas em eventos do FullCalendar
+            const eventosCalendario = parcelasCalendario.map(parcela => {
+                const hoje = new Date();
+                const vencimento = new Date(parcela.data_vencimento);
+                let status = parcela.status;
+                let cor = '#6B7280';
+                
+                if (status === 'Pago') {
+                    cor = '#10B981'; // Verde
+                } else if (status === 'Pendente') {
+                    if (vencimento < hoje) {
+                        cor = '#EF4444'; // Vermelho - vencida
+                        status = 'Vencida';
+                    } else {
+                        cor = '#3B82F6'; // Azul - a pagar
+                        status = 'A Pagar';
+                    }
+                }
+
+                return {
+                    id: parcela.id.toString(),
+                    title: `Parcela ${parcela.numero} - R$ ${parcela.valor.toFixed(2)}`,
+                    date: parcela.data_vencimento,
+                    backgroundColor: cor,
+                    borderColor: cor,
+                    textColor: '#FFFFFF',
+                    extendedProps: {
+                        cliente: parcela.cliente,
+                        status: status,
+                        valor: parcela.valor,
+                        numero: parcela.numero
+                    }
+                };
+            console.log('📅 Eventos criados:', eventosCalendario);
+            document.getElementById('events-status').textContent = `✅ ${eventosCalendario.length} eventos`;
+
+            try {
+                const calendar = new FullCalendar.Calendar(calendarEl, {
+                plugins: [FullCalendar.dayGridPlugin, FullCalendar.timeGridPlugin, FullCalendar.interactionPlugin],
+                initialView: 'dayGridMonth',
+                headerToolbar: {
+                    left: 'prev,next today',
+                    center: 'title',
+                    right: 'dayGridMonth,dayGridWeek,timeGridDay'
+                },
+                events: eventosCalendario,
+                eventClick: function(clickInfo) {
+                    const evento = clickInfo.event;
+                    const props = evento.extendedProps;
+                    
+                    alert(`Cliente: ${props.cliente}\nParcela: ${props.numero}\nValor: R$ ${props.valor.toFixed(2)}\nStatus: ${props.status}\nVencimento: ${evento.start.toLocaleDateString('pt-BR')}`);
+                },
+                height: 'auto',
+                locale: 'pt-br',
+                buttonText: {
+                    today: 'Hoje',
+                    month: 'Mês',
+                    week: 'Semana',
+                    day: 'Dia'
+                },
+                dayHeaderFormat: {
+                    weekday: 'short'
+                },
+                eventDisplay: 'block',
+                eventTextColor: '#FFFFFF',
+                eventBorderColor: 'transparent',
+                eventBackgroundColor: 'inherit',
+                dayMaxEvents: 3,
+                moreLinkClick: 'popover'
+            });
+
+                calendar.render();
+                document.getElementById('calendar-status').textContent = '✅ Inicializado';
+                console.log('✅ Calendário renderizado com sucesso!');
+                
+            } catch (error) {
+                document.getElementById('calendar-status').textContent = '❌ Erro: ' + error.message;
+                console.error('❌ Erro ao renderizar calendário:', error);
+                calendarEl.innerHTML = '<div class="p-8 text-center text-red-600"><h3 class="text-xl font-bold">Erro ao carregar calendário</h3><p>' + error.message + '</p><p>Recarregue a página (Ctrl+F5)</p></div>';
+            }
+        }
     </script>
 </body>
 </html>

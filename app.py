@@ -934,12 +934,255 @@ def dashboard_parcelas():
         'total_vencidas': total_vencidas
     }
     
+    # Buscar dados das parcelas para o calendário
+    cur.execute('''
+        SELECT 
+            co.id,
+            co.numero_parcelas,
+            co.valor_total,
+            co.data_vencimento,
+            co.status,
+            c.nome as cliente_nome
+        FROM cobrancas co
+        JOIN clientes c ON co.cliente_id = c.id
+        ORDER BY co.data_vencimento
+    ''')
+    
+    parcelas_calendario = cur.fetchall()
+    
     cur.close()
     conn.close()
     
     return render_template('dashboard_parcelas.html', 
                          clientes=clientes_com_parcelas,
-                         stats=stats_gerais)
+                         stats=stats_gerais,
+                         parcelas=parcelas_calendario)
+
+# --- Rotas do Calendário ---
+@app.route('/calendario')
+@login_required
+def calendario():
+    """Renderiza a página do calendário."""
+    return render_template('calendario.html')
+
+@app.route('/api/calendario/eventos')
+@login_required
+def api_calendario_eventos():
+    """API para buscar eventos do calendário."""
+    conn = get_db()
+    cur = conn.cursor(row_factory=dict_row)
+    
+    # Buscar todas as cobranças com informações do cliente
+    cur.execute('''
+        SELECT 
+            co.id,
+            co.descricao,
+            co.valor_original,
+            co.valor_pago,
+            co.data_vencimento,
+            co.data_pagamento,
+            co.status,
+            co.numero_parcelas,
+            co.parcela_atual,
+            co.tipo_cobranca,
+            c.nome as cliente_nome,
+            c.telefone,
+            c.email
+        FROM cobrancas co
+        JOIN clientes c ON co.cliente_id = c.id
+        ORDER BY co.data_vencimento ASC
+    ''')
+    
+    cobrancas = cur.fetchall()
+    
+    # Converter para formato de eventos do calendário
+    eventos = []
+    for cobranca in cobrancas:
+        # Calcular valores atualizados
+        valores = calcular_valor_atualizado(dict(cobranca))
+        
+        # Determinar cor baseada no status
+        if cobranca['status'] == 'Pago':
+            cor = '#28a745'  # Verde
+        elif cobranca['status'] == 'Pendente':
+            if valores['dias_atraso'] > 0:
+                cor = '#dc3545'  # Vermelho (vencida)
+            else:
+                cor = '#007bff'  # Azul (a pagar)
+        else:
+            cor = '#6c757d'  # Cinza (cancelada)
+        
+        evento = {
+            'id': cobranca['id'],
+            'title': f"{cobranca['cliente_nome']} - R$ {valores['valor_total']:.2f}",
+            'start': cobranca['data_vencimento'].strftime('%Y-%m-%d'),
+            'backgroundColor': cor,
+            'borderColor': cor,
+            'textColor': '#ffffff',
+            'extendedProps': {
+                'cliente_nome': cobranca['cliente_nome'],
+                'cliente_telefone': cobranca['telefone'],
+                'cliente_email': cobranca['email'],
+                'descricao': cobranca['descricao'],
+                'valor_original': float(cobranca['valor_original']),
+                'valor_pago': float(cobranca['valor_pago']) if cobranca['valor_pago'] else 0,
+                'valor_total': valores['valor_total'],
+                'multa': valores['multa'],
+                'juros': valores['juros'],
+                'dias_atraso': valores['dias_atraso'],
+                'status': cobranca['status'],
+                'numero_parcelas': cobranca['numero_parcelas'],
+                'parcela_atual': cobranca['parcela_atual'],
+                'tipo_cobranca': cobranca['tipo_cobranca'],
+                'data_pagamento': cobranca['data_pagamento'].strftime('%Y-%m-%d') if cobranca['data_pagamento'] else None
+            }
+        }
+        eventos.append(evento)
+    
+    cur.close()
+    conn.close()
+    
+    return jsonify(eventos)
+
+@app.route('/api/calendario/estatisticas')
+@login_required
+def api_calendario_estatisticas():
+    """API para buscar estatísticas do calendário."""
+    conn = get_db()
+    cur = conn.cursor(row_factory=dict_row)
+    
+    # Estatísticas gerais
+    cur.execute("SELECT COUNT(*) as count FROM cobrancas WHERE status = 'Pago'")
+    total_pagas = cur.fetchone()['count']
+    
+    cur.execute("SELECT COUNT(*) as count FROM cobrancas WHERE status = 'Pendente' AND data_vencimento >= CURRENT_DATE")
+    total_a_pagar = cur.fetchone()['count']
+    
+    cur.execute("SELECT COUNT(*) as count FROM cobrancas WHERE status = 'Pendente' AND data_vencimento < CURRENT_DATE")
+    total_vencidas = cur.fetchone()['count']
+    
+    cur.execute("SELECT COUNT(*) as count FROM cobrancas WHERE status = 'Cancelada'")
+    total_canceladas = cur.fetchone()['count']
+    
+    # Valores totais
+    cur.execute("SELECT COALESCE(SUM(valor_original), 0) as total FROM cobrancas WHERE status = 'Pago'")
+    valor_total_pagas = cur.fetchone()['total']
+    
+    cur.execute("SELECT COALESCE(SUM(valor_original), 0) as total FROM cobrancas WHERE status = 'Pendente' AND data_vencimento >= CURRENT_DATE")
+    valor_total_a_pagar = cur.fetchone()['total']
+    
+    cur.execute("SELECT COALESCE(SUM(valor_original), 0) as total FROM cobrancas WHERE status = 'Pendente' AND data_vencimento < CURRENT_DATE")
+    valor_total_vencidas = cur.fetchone()['total']
+    
+    # Próximos vencimentos (próximos 7 dias)
+    cur.execute('''
+        SELECT 
+            co.id,
+            co.descricao,
+            co.valor_original,
+            co.data_vencimento,
+            c.nome as cliente_nome,
+            c.telefone
+        FROM cobrancas co
+        JOIN clientes c ON co.cliente_id = c.id
+        WHERE co.status = 'Pendente' 
+        AND co.data_vencimento BETWEEN CURRENT_DATE AND CURRENT_DATE + INTERVAL '7 days'
+        ORDER BY co.data_vencimento ASC
+        LIMIT 10
+    ''')
+    proximos_vencimentos = cur.fetchall()
+    
+    cur.close()
+    conn.close()
+    
+    estatisticas = {
+        'contadores': {
+            'pagas': total_pagas,
+            'a_pagar': total_a_pagar,
+            'vencidas': total_vencidas,
+            'canceladas': total_canceladas
+        },
+        'valores': {
+            'pagas': float(valor_total_pagas),
+            'a_pagar': float(valor_total_a_pagar),
+            'vencidas': float(valor_total_vencidas)
+        },
+        'proximos_vencimentos': [
+            {
+                'id': v['id'],
+                'cliente_nome': v['cliente_nome'],
+                'descricao': v['descricao'],
+                'valor': float(v['valor_original']),
+                'data_vencimento': v['data_vencimento'].strftime('%Y-%m-%d'),
+                'telefone': v['telefone']
+            }
+            for v in proximos_vencimentos
+        ]
+    }
+    
+    return jsonify(estatisticas)
+
+@app.route('/api/calendario/pagar/<int:cobranca_id>', methods=['POST'])
+@login_required
+def api_calendario_pagar(cobranca_id):
+    """API para processar pagamento via calendário."""
+    conn = get_db()
+    cur = conn.cursor(row_factory=dict_row)
+    
+    # Buscar cobrança
+    cur.execute('SELECT * FROM cobrancas WHERE id = %s', (cobranca_id,))
+    cobranca = cur.fetchone()
+    if not cobranca:
+        cur.close()
+        conn.close()
+        return jsonify({'success': False, 'message': 'Cobrança não encontrada'}), 404
+    
+    # Obter dados do formulário
+    data = request.get_json()
+    valor_pago = float(data.get('valor_pago', cobranca['valor_original']))
+    forma_pagamento = data.get('forma_pagamento', 'Dinheiro')
+    observacoes = data.get('observacoes', '')
+    
+    # Calcular valores atualizados
+    valores = calcular_valor_atualizado(dict(cobranca))
+    valor_total = valores['valor_total']
+    
+    # Verificar se o valor pago é suficiente
+    if valor_pago < valor_total:
+        cur.close()
+        conn.close()
+        return jsonify({
+            'success': False, 
+            'message': f'Valor insuficiente. Valor total: R$ {valor_total:.2f}'
+        }), 400
+    
+    try:
+        # Atualizar cobrança
+        cur.execute('''
+            UPDATE cobrancas 
+            SET status='Pago', valor_pago=%s, forma_pagamento=%s, 
+                data_pagamento=CURRENT_DATE, atualizado_em=CURRENT_TIMESTAMP
+            WHERE id=%s
+        ''', (valor_pago, forma_pagamento, cobranca_id))
+        
+        # Registrar no histórico de pagamentos
+        cur.execute('''
+            INSERT INTO historico_pagamentos (cobranca_id, cliente_id, valor_pago, forma_pagamento, observacoes, usuario_id)
+            VALUES (%s, %s, %s, %s, %s, %s)
+        ''', (cobranca_id, cobranca['cliente_id'], valor_pago, forma_pagamento, observacoes, session.get('usuario_id')))
+        
+        conn.commit()
+        cur.close()
+        conn.close()
+        
+        return jsonify({'success': True, 'message': 'Pagamento registrado com sucesso!'})
+        
+    except Exception as e:
+        conn.rollback()
+        cur.close()
+        conn.close()
+        return jsonify({'success': False, 'message': f'Erro ao processar pagamento: {str(e)}'}), 500
+
 
 # --- Execução da Aplicação ---
 if __name__ == '__main__':
