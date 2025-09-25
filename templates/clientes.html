@@ -410,6 +410,7 @@
                             <th>Cliente</th>
                             <th>CPF/CNPJ</th>
                             <th>Contato</th>
+                            <th>Referência</th>
                             <th>Localização</th>
                             <th>Cobranças</th>
                             <th>Pendências</th>
@@ -438,6 +439,16 @@
                                     <strong>{{ cliente.telefone }}</strong>
                                     {% if cliente.telefone_secundario %}
                                         <br><small>{{ cliente.telefone_secundario }}</small>
+                                    {% endif %}
+                                {% else %}
+                                    <span style="color: #999;">Não informado</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                {% if cliente.referencia %}
+                                    <strong>{{ cliente.referencia }}</strong>
+                                    {% if cliente.telefone_referencia %}
+                                        <br><small>{{ cliente.telefone_referencia }}</small>
                                     {% endif %}
                                 {% else %}
                                     <span style="color: #999;">Não informado</span>

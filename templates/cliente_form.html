@@ -407,6 +407,22 @@
                     </div>
                 </div>
 
+                <!-- Referência -->
+                <div class="form-section">
+                    <h3 class="section-title">Referência</h3>
+                    <div class="form-grid">
+                        <div class="form-group">
+                            <label for="referencia">Nome da Referência</label>
+                            <input type="text" id="referencia" name="referencia" value="{{ cliente.referencia if cliente else '' }}" placeholder="Nome da pessoa de referência">
+                        </div>
+
+                        <div class="form-group">
+                            <label for="telefone_referencia">Telefone da Referência</label>
+                            <input type="text" id="telefone_referencia" name="telefone_referencia" value="{{ cliente.telefone_referencia if cliente else '' }}" placeholder="(00) 00000-0000">
+                        </div>
+                    </div>
+                </div>
+
                 <!-- Endereço -->
                 <div class="form-section">
                     <h3 class="section-title">Endereço</h3>
@@ -553,7 +569,7 @@
         // Event listeners
         document.addEventListener('DOMContentLoaded', function() {
             // Apply masks
-            const phoneInputs = document.querySelectorAll('#telefone, #telefone_secundario');
+            const phoneInputs = document.querySelectorAll('#telefone, #telefone_secundario, #telefone_referencia');
             phoneInputs.forEach(input => {
                 input.addEventListener('input', () => maskPhone(input));
             });

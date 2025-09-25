@@ -72,6 +72,8 @@ def init_db():
                 cidade TEXT,
                 estado TEXT,
                 cep TEXT,
+                referencia TEXT,
+                telefone_referencia TEXT,
                 observacoes TEXT,
                 criado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 atualizado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -162,6 +164,14 @@ def init_db():
             ''', (chave, valor, descricao))
 
         conn.commit()
+
+        # Adicionar campos de referência se não existirem (migração)
+        try:
+            cur.execute('ALTER TABLE clientes ADD COLUMN IF NOT EXISTS referencia TEXT')
+            cur.execute('ALTER TABLE clientes ADD COLUMN IF NOT EXISTS telefone_referencia TEXT')
+            conn.commit()
+        except Exception as e:
+            print(f"Aviso: Erro ao adicionar campos de referência: {e}")
 
         # Criar usuário admin padrão se não existir
         cur.execute('SELECT id FROM usuarios WHERE email = %s', ('admin@sistema.com',))
@@ -399,6 +409,8 @@ def adicionar_cliente():
             'cidade': request.form.get('cidade', ''),
             'estado': request.form.get('estado', ''),
             'cep': request.form.get('cep', ''),
+            'referencia': request.form.get('referencia', ''),
+            'telefone_referencia': request.form.get('telefone_referencia', ''),
             'observacoes': request.form.get('observacoes', '')
         }
         
@@ -412,8 +424,8 @@ def adicionar_cliente():
         try:
             cur.execute('''
                 INSERT INTO clientes (nome, cpf_cnpj, email, telefone, telefone_secundario, 
-                                    endereco, cidade, estado, cep, observacoes)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                                    endereco, cidade, estado, cep, referencia, telefone_referencia, observacoes)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             ''', tuple(dados.values()))
             conn.commit()
             flash('Cliente adicionado com sucesso!', 'success')
@@ -493,6 +505,8 @@ def editar_cliente(cliente_id):
             'cidade': request.form.get('cidade', ''),
             'estado': request.form.get('estado', ''),
             'cep': request.form.get('cep', ''),
+            'referencia': request.form.get('referencia', ''),
+            'telefone_referencia': request.form.get('telefone_referencia', ''),
             'observacoes': request.form.get('observacoes', '')
         }
         
@@ -507,12 +521,12 @@ def editar_cliente(cliente_id):
             cur.execute('''
                 UPDATE clientes 
                 SET nome=%s, cpf_cnpj=%s, email=%s, telefone=%s, telefone_secundario=%s,
-                    endereco=%s, cidade=%s, estado=%s, cep=%s, observacoes=%s,
+                    endereco=%s, cidade=%s, estado=%s, cep=%s, referencia=%s, telefone_referencia=%s, observacoes=%s,
                     atualizado_em=CURRENT_TIMESTAMP
                 WHERE id=%s
             ''', (dados['nome'], dados['cpf_cnpj'], dados['email'], dados['telefone'], 
                  dados['telefone_secundario'], dados['endereco'], dados['cidade'], 
-                 dados['estado'], dados['cep'], dados['observacoes'], cliente_id))
+                 dados['estado'], dados['cep'], dados['referencia'], dados['telefone_referencia'], dados['observacoes'], cliente_id))
             conn.commit()
             flash('Cliente atualizado com sucesso!', 'success')
             cur.close()

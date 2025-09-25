@@ -249,6 +249,18 @@
             </div>
 
             <div class="info-card">
+                <h3>Referência</h3>
+                <div class="info-item">
+                    <span class="info-label">Nome da Referência:</span>
+                    <span class="info-value">{{ cliente.referencia or 'Não informado' }}</span>
+                </div>
+                <div class="info-item">
+                    <span class="info-label">Telefone da Referência:</span>
+                    <span class="info-value">{{ cliente.telefone_referencia or 'Não informado' }}</span>
+                </div>
+            </div>
+
+            <div class="info-card">
                 <h3>Endereço</h3>
                 <div class="info-item">
                     <span class="info-label">Endereço:</span>
