@@ -3,12 +3,6 @@ import ParcelasPieChart from './components/ParcelasPieChart';
 import CalendarioVencimentos from './components/CalendarioVencimentos';
 
 const Dashboard = () => {
-  // Dados de exemplo para o gráfico de parcelas
-  const [parcelasData] = useState([
-    { name: 'Pagas', value: 5 },
-    { name: 'A pagar', value: 3 },
-    { name: 'Vencidas', value: 2 }
-  ]);
 
   // Dados de exemplo para diferentes clientes
   const [clientesData] = useState([
@@ -44,14 +38,23 @@ const Dashboard = () => {
   const [clienteSelecionado, setClienteSelecionado] = useState(0);
 
   return (
-    <div className="min-h-screen bg-gray-50 py-8">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+    <div className="min-h-screen bg-gray-50 p-8">
+      <div className="max-w-7xl mx-auto">
         {/* Header do Dashboard */}
         <div className="mb-8">
-          <h1 className="text-3xl font-bold text-gray-900">Dashboard CRM</h1>
-          <p className="mt-2 text-gray-600">
-            Visualização das parcelas dos clientes
-          </p>
+          <div className="flex justify-between items-start">
+            <div>
+              <h1 className="text-3xl font-bold text-gray-900">Dashboard CRM</h1>
+              <p className="mt-2 text-gray-600">
+                Visualização das parcelas dos clientes
+              </p>
+            </div>
+            <div className="flex gap-3">
+              <div className="text-sm text-gray-500">
+                Sistema de Gestão de Empréstimos
+              </div>
+            </div>
+          </div>
         </div>
 
         {/* Seletor de Cliente */}

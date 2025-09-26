@@ -1,16 +1,23 @@
 import React from 'react';
-import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
+import { HashRouter as Router, Routes, Route } from 'react-router-dom';
 import './index.css';
+import Layout from './components/Layout';
 import Dashboard from './Dashboard';
+import Relatorios from './Relatorios';
 import CalendarioVencimentos from './components/CalendarioVencimentos';
 
 function App() {
+  console.log('🚀 App carregado, hash atual:', window.location.hash);
+  
   return (
     <Router>
       <div className="App">
         <Routes>
-          <Route path="/" element={<Dashboard />} />
-          <Route path="/calendario" element={<CalendarioVencimentos />} />
+          <Route path="/" element={<Layout />}>
+            <Route index element={<Dashboard />} />
+            <Route path="relatorios" element={<Relatorios />} />
+            <Route path="calendario" element={<CalendarioVencimentos />} />
+          </Route>
         </Routes>
       </div>
     </Router>

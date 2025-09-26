@@ -2,7 +2,7 @@
 
 import os
 import sys
-from flask import Flask, render_template, request, redirect, url_for, jsonify, flash, session
+from flask import Flask, render_template, request, redirect, url_for, jsonify, flash, session, send_from_directory
 from datetime import datetime, timedelta
 from werkzeug.security import generate_password_hash, check_password_hash
 from functools import wraps
@@ -20,7 +20,7 @@ except ImportError:
     pass  # python-dotenv não está instalado, usar apenas variáveis de ambiente do sistema
 
 # Inicializa a aplicação Flask
-app = Flask(__name__)
+app = Flask(__name__, static_folder='build/static', static_url_path='/static')
 # Usa SECRET_KEY do ambiente em produção; gera uma chave temporária caso não definida
 app.secret_key = os.getenv('SECRET_KEY', secrets.token_hex(16))  # Chave secreta para sessões
 
@@ -722,42 +722,26 @@ def pagar_cobranca(cobranca_id):
     return redirect(url_for('index'))
 
 
-# --- Rotas de Relatórios ---
-@app.route('/relatorios')
+# --- Rota para servir o React ---
+@app.route('/react')
 @login_required
-def relatorios():
-    """Exibe relatórios do sistema."""
-    conn = get_db()
-    cur = conn.cursor(row_factory=dict_row)
-    
-    # Estatísticas para relatórios
-    cur.execute('SELECT COUNT(*) as count FROM clientes')
-    total_clientes = cur.fetchone()['count']
-    
-    cur.execute("SELECT COUNT(*) as count FROM cobrancas WHERE status = 'Pendente'")
-    cobrancas_pendentes = cur.fetchone()['count']
-    
-    cur.execute("SELECT COUNT(*) as count FROM cobrancas WHERE status = 'Pago'")
-    cobrancas_pagas = cur.fetchone()['count']
-    
-    cur.execute("SELECT COALESCE(SUM(valor_original), 0) as total FROM cobrancas WHERE status = 'Pendente'")
-    valor_pendente = cur.fetchone()['total']
-    
-    cur.execute("SELECT COALESCE(SUM(valor_original), 0) as total FROM cobrancas WHERE status = 'Pago'")
-    valor_recebido = cur.fetchone()['total']
-    
-    stats = {
-        'total_clientes': total_clientes,
-        'cobrancas_pendentes': cobrancas_pendentes,
-        'cobrancas_pagas': cobrancas_pagas,
-        'valor_pendente': valor_pendente,
-        'valor_recebido': valor_recebido
-    }
-    
-    cur.close()
-    conn.close()
-    
-    return render_template('relatorios.html', stats=stats)
+def serve_react():
+    """Serve a aplicação React."""
+    return send_from_directory('build', 'index.html')
+
+
+
+
+
+
+
+
+
+# Rota para servir o asset-manifest.json do React
+@app.route('/asset-manifest.json')
+def serve_asset_manifest():
+    """Serve o asset-manifest.json do React."""
+    return send_from_directory('build', 'asset-manifest.json')
 
 # --- Rotas de Usuários ---
 @app.route('/usuarios')
@@ -888,75 +872,6 @@ def configuracoes():
     
     return render_template('configuracoes.html', configs=configs)
 
-# --- Rota do Dashboard de Parcelas ---
-@app.route('/dashboard-parcelas')
-@login_required
-def dashboard_parcelas():
-    """Exibe o dashboard com gráfico de parcelas dos clientes."""
-    conn = get_db()
-    cur = conn.cursor(row_factory=dict_row)
-    
-    # Buscar dados reais dos clientes e suas parcelas
-    cur.execute('''
-        SELECT 
-            c.id,
-            c.nome,
-            COUNT(co.id) as total_parcelas,
-            SUM(CASE WHEN co.status = 'Pago' THEN 1 ELSE 0 END) as parcelas_pagas,
-            SUM(CASE WHEN co.status = 'Pendente' AND co.data_vencimento >= CURRENT_DATE THEN 1 ELSE 0 END) as parcelas_a_pagar,
-            SUM(CASE WHEN co.status = 'Pendente' AND co.data_vencimento < CURRENT_DATE THEN 1 ELSE 0 END) as parcelas_vencidas
-        FROM clientes c
-        LEFT JOIN cobrancas co ON c.id = co.cliente_id
-        GROUP BY c.id, c.nome
-        HAVING COUNT(co.id) > 0
-        ORDER BY c.nome
-    ''')
-    
-    clientes_com_parcelas = cur.fetchall()
-    
-    # Estatísticas gerais
-    cur.execute("SELECT COUNT(*) as count FROM clientes")
-    total_clientes = cur.fetchone()['count']
-    
-    cur.execute("SELECT COUNT(*) as count FROM cobrancas WHERE status = 'Pago'")
-    total_pagas = cur.fetchone()['count']
-    
-    cur.execute("SELECT COUNT(*) as count FROM cobrancas WHERE status = 'Pendente' AND data_vencimento >= CURRENT_DATE")
-    total_a_pagar = cur.fetchone()['count']
-    
-    cur.execute("SELECT COUNT(*) as count FROM cobrancas WHERE status = 'Pendente' AND data_vencimento < CURRENT_DATE")
-    total_vencidas = cur.fetchone()['count']
-    
-    stats_gerais = {
-        'total_clientes': total_clientes,
-        'total_pagas': total_pagas,
-        'total_a_pagar': total_a_pagar,
-        'total_vencidas': total_vencidas
-    }
-    
-    # Buscar dados das parcelas para o calendário
-    cur.execute('''
-        SELECT 
-            co.id,
-            co.numero_parcelas,
-            co.valor_total,
-            co.data_vencimento,
-            co.status,
-            c.nome as cliente_nome
-        FROM cobrancas co
-        JOIN clientes c ON co.cliente_id = c.id
-        ORDER BY co.data_vencimento
-    ''')
-    
-    parcelas_calendario = cur.fetchall()
-    
-    cur.close()
-    conn.close()
-    
-    return render_template('dashboard_parcelas.html', 
-                         clientes=clientes_com_parcelas,
-                         stats=stats_gerais,
-                         parcelas=parcelas_calendario)
 
 # --- Rotas do Calendário ---
 @app.route('/calendario')

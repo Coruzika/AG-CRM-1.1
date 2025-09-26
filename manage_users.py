@@ -9,6 +9,7 @@ import sys
 import getpass
 from app import app, get_db
 from werkzeug.security import generate_password_hash
+from psycopg.rows import dict_row
 
 def listar_usuarios():
     """Lista todos os usuários do sistema."""

@@ -5,10 +5,7 @@ import timeGridPlugin from '@fullcalendar/timegrid';
 import interactionPlugin from '@fullcalendar/interaction';
 import ptBrLocale from '@fullcalendar/core/locales/pt-br';
 
-// Importar estilos CSS
-import '@fullcalendar/core/main.css';
-import '@fullcalendar/daygrid/main.css';
-import '@fullcalendar/timegrid/main.css';
+// FullCalendar v6 injeta estilos automaticamente - não é necessário importar CSS
 
 const CalendarioVencimentos = () => {
   const [events, setEvents] = useState([]);
@@ -91,16 +88,6 @@ const CalendarioVencimentos = () => {
     }
   };
 
-  // Determinar cor do evento baseada no status
-  const getEventColor = (status, diasAtraso) => {
-    if (status === 'Pago') {
-      return '#28a745'; // Verde
-    } else if (status === 'Pendente') {
-      return diasAtraso > 0 ? '#dc3545' : '#007bff'; // Vermelho se vencida, azul se a pagar
-    } else {
-      return '#6c757d'; // Cinza para canceladas
-    }
-  };
 
   // Converter eventos para formato do FullCalendar
   const eventosCalendario = events.map(evento => ({
