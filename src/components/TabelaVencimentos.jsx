@@ -1,5 +1,4 @@
 import React, { useState } from 'react';
-import LoadingSpinner from './LoadingSpinner';
 import ErrorMessage from './ErrorMessage';
 
 const TabelaVencimentos = ({ data, isLoading, error, onExport }) => {

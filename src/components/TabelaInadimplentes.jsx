@@ -1,5 +1,4 @@
 import React from 'react';
-import LoadingSpinner from './LoadingSpinner';
 import ErrorMessage from './ErrorMessage';
 
 const TabelaInadimplentes = ({ data, isLoading, error, onExport }) => {

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { reportsAPI } from './services/api';
 import FiltrosGlobais from './components/FiltrosGlobais';
 import CardsKPIs from './components/CardsKPIs';
@@ -8,7 +8,6 @@ import GraficoTopClientes from './components/GraficoTopClientes';
 import TabelaInadimplentes from './components/TabelaInadimplentes';
 import TabelaVencimentos from './components/TabelaVencimentos';
 import LoadingSpinner from './components/LoadingSpinner';
-import ErrorMessage from './components/ErrorMessage';
 
 const Relatorios = () => {
   // Estados para filtros
@@ -56,7 +55,7 @@ const Relatorios = () => {
   };
 
   // Função para buscar dados da API
-  const fetchData = async () => {
+  const fetchData = useCallback(async () => {
     const { startDate, endDate } = filtros;
 
     try {
@@ -129,7 +128,7 @@ const Relatorios = () => {
     } catch (error) {
       console.error('Erro ao buscar dados:', error);
     }
-  };
+  }, [filtros]);
 
   // Função para lidar com mudanças nos filtros
   const handleFilterChange = (novosFiltros) => {
@@ -160,7 +159,7 @@ const Relatorios = () => {
   // Buscar dados quando o componente monta ou filtros mudam
   useEffect(() => {
     fetchData();
-  }, [filtros.startDate, filtros.endDate]);
+  }, [fetchData]);
 
   // Verificar se algum dado está carregando
   const isAnyLoading = Object.values(loadingStates).some(loading => loading);
