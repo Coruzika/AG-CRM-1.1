@@ -722,12 +722,17 @@ def pagar_cobranca(cobranca_id):
     return redirect(url_for('index'))
 
 
-# --- Rota para servir o React ---
-@app.route('/react')
-@login_required
-def serve_react():
-    """Serve a aplicação React."""
-    return send_from_directory('build', 'index.html')
+# --- Rota "Catch-All" para servir a aplicação React ---
+# Esta rota garante que qualquer URL que não seja uma rota de API 
+# seja gerenciada pelo React, permitindo o roteamento no lado do cliente.
+@app.route('/', defaults={'path': ''})
+@app.route('/<path:path>')
+@login_required # Garante que o usuário esteja logado para carregar o app
+def serve(path):
+    if path != "" and os.path.exists(os.path.join(app.static_folder, '..', path)):
+        return send_from_directory(os.path.join(app.static_folder, '..'), path)
+    else:
+        return send_from_directory(os.path.join(app.static_folder, '..'), 'index.html')
 
 
 
@@ -737,11 +742,6 @@ def serve_react():
 
 
 
-# Rota para servir o asset-manifest.json do React
-@app.route('/asset-manifest.json')
-def serve_asset_manifest():
-    """Serve o asset-manifest.json do React."""
-    return send_from_directory('build', 'asset-manifest.json')
 
 # --- Rotas de Usuários ---
 @app.route('/usuarios')
