@@ -4,7 +4,7 @@ import os
 import sys
 from flask import Flask, render_template, request, redirect, url_for, jsonify, flash, session, send_from_directory
 from flask_cors import CORS
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, date
 from werkzeug.security import generate_password_hash, check_password_hash
 from functools import wraps
 import secrets
@@ -531,9 +531,25 @@ def visualizar_cliente(cliente_id):
     cur.close()
     conn.close()
     
+    # Calcular multa dinâmica para cada cobrança
+    hoje = date.today()
+    cobrancas_processadas = []
+    if cobrancas:  # Garante que só vai iterar se houver cobranças
+        for cobranca in cobrancas:
+            # Converter dict para um objeto mutável
+            cobranca_dict = dict(cobranca)
+            cobranca_dict['valor_multa'] = 0
+            
+            if hoje > cobranca_dict['data_vencimento']:
+                dias_atraso = (hoje - cobranca_dict['data_vencimento']).days
+                cobranca_dict['valor_multa'] = dias_atraso * 40.00
+
+            cobranca_dict['total_a_pagar'] = cobranca_dict['valor_original'] + cobranca_dict['valor_multa']
+            cobrancas_processadas.append(cobranca_dict)
+    
     return render_template('cliente_detalhes.html', 
                          cliente=cliente, 
-                         cobrancas=cobrancas,
+                         cobrancas=cobrancas_processadas,
                          historico=historico)
 
 @app.route('/cliente/<int:cliente_id>/editar', methods=['GET', 'POST'])

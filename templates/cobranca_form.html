@@ -642,6 +642,28 @@
             document.getElementById('valor_emprestimo').addEventListener('input', calcularValorDevido);
             document.getElementById('taxa_juros').addEventListener('change', calcularValorDevido);
 
+            // Validação para impedir domingos como data de vencimento
+            if (dataInput) {
+                dataInput.addEventListener('change', function() {
+                    const dataSelecionada = new Date(this.value + 'T00:00:00'); // Adiciona T00:00 para evitar problemas de fuso
+
+                    // getDay() retorna 0 para Domingo
+                    if (dataSelecionada.getDay() === 0) {
+                        // Adiciona um dia à data para pular para segunda-feira
+                        dataSelecionada.setDate(dataSelecionada.getDate() + 1);
+
+                        // Formata a nova data para YYYY-MM-DD e atualiza o campo
+                        const ano = dataSelecionada.getFullYear();
+                        const mes = String(dataSelecionada.getMonth() + 1).padStart(2, '0');
+                        const dia = String(dataSelecionada.getDate()).padStart(2, '0');
+                        this.value = `${ano}-${mes}-${dia}`;
+
+                        // Opcional: Alerta o usuário
+                        alert('A data de vencimento não pode ser em um domingo. A data foi ajustada para a segunda-feira seguinte.');
+                    }
+                });
+            }
+
             // Form validation
             document.getElementById('cobrancaForm').addEventListener('submit', function(e) {
                 const clienteId = document.getElementById('cliente_id').value;

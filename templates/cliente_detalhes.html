@@ -305,7 +305,9 @@
                 <thead>
                     <tr>
                         <th>Descrição</th>
-                        <th>Valor</th>
+                        <th>Valor Original</th>
+                        <th>Multa por Atraso</th>
+                        <th>Total a Pagar</th>
                         <th>Vencimento</th>
                         <th>Status</th>
                         <th>Ações</th>
@@ -316,6 +318,8 @@
                     <tr>
                         <td>{{ cobranca.descricao or 'Sem descrição' }}</td>
                         <td>R$ {{ "{:,.2f}".format(cobranca.valor_original).replace(',', 'X').replace('.', ',').replace('X', '.') }}</td>
+                        <td>R$ {{ "{:,.2f}".format(cobranca.valor_multa).replace(',', 'X').replace('.', ',').replace('X', '.') }}</td>
+                        <td><strong>R$ {{ "{:,.2f}".format(cobranca.total_a_pagar).replace(',', 'X').replace('.', ',').replace('X', '.') }}</strong></td>
                         <td>{{ cobranca.data_vencimento.strftime('%d/%m/%Y') }}</td>
                         <td>
                             {% if cobranca.status == 'Pago' %}
@@ -329,7 +333,7 @@
                         <td>
                             {% if cobranca.status != 'Pago' %}
                             <a href="{{ url_for('editar_cobranca', id=cobranca.id) }}" class="btn-sm" style="background: #667eea; color: white; text-decoration: none; padding: 5px 10px; border-radius: 4px; font-size: 12px; margin-right: 5px;">Editar</a>
-                            <button onclick="openPaymentModal({{ cobranca.id }}, '{{ cliente.nome }}', {{ cobranca.valor_original }})" class="btn-sm pay">Pagar</button>
+                            <button onclick="openPaymentModal({{ cobranca.id }}, '{{ cliente.nome }}', {{ cobranca.total_a_pagar }})" class="btn-sm pay">Pagar</button>
                             <form action="{{ url_for('cancelar_cobranca', cobranca_id=cobranca.id) }}" method="POST" style="display: inline;" onsubmit="return confirm('Deseja cancelar esta cobrança?');">
                                 <button type="submit" class="btn-sm cancel">Cancelar</button>
                             </form>
