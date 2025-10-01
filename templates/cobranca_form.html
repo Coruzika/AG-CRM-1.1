@@ -312,9 +312,24 @@
                     </div>
 
                     <div class="form-group">
+                        <label for="valor_emprestimo">Valor Emprestado (R$) <span class="required">*</span></label>
+                        <input type="number" id="valor_emprestimo" name="valor_emprestimo" step="0.01" min="0.01" 
+                               value="{{ cobranca.valor_original if cobranca else '' }}" required>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="taxa_juros">Taxa de Juros (%) <span class="required">*</span></label>
+                        <select id="taxa_juros" name="taxa_juros" class="form-control" required>
+                            <option value="" disabled selected>Selecione a taxa de juros</option>
+                            <option value="30" {% if cobranca and cobranca.taxa_juros == 30 %}selected{% endif %}>30%</option>
+                            <option value="60" {% if cobranca and cobranca.taxa_juros == 60 %}selected{% endif %}>60%</option>
+                        </select>
+                    </div>
+
+                    <div class="form-group">
                         <label for="valor_devido">Valor Devido (R$) <span class="required">*</span></label>
                         <input type="number" id="valor_devido" name="valor_devido" step="0.01" min="0.01" 
-                               value="{{ cobranca.valor_original if cobranca else '' }}" required>
+                               value="{{ cobranca.valor_total if cobranca else '' }}" required readonly style="background: #f7fafc; color: #666;">
                     </div>
 
                     <div class="form-group full-width">
@@ -385,6 +400,19 @@
             const tipo = document.getElementById('tipo_cobranca').value;
             const parcelasDiv = document.getElementById('parcelasDiv');
             parcelasDiv.style.display = tipo === 'Parcelada' ? 'block' : 'none';
+        }
+
+        function calcularValorDevido() {
+            const valorEmprestimo = parseFloat(document.getElementById('valor_emprestimo').value) || 0;
+            const taxaJuros = parseFloat(document.getElementById('taxa_juros').value) || 0;
+            
+            if (valorEmprestimo > 0 && taxaJuros > 0) {
+                const juros = valorEmprestimo * (taxaJuros / 100);
+                const valorDevido = valorEmprestimo + juros;
+                document.getElementById('valor_devido').value = valorDevido.toFixed(2);
+            } else {
+                document.getElementById('valor_devido').value = '';
+            }
         }
 
         // Custom Datepicker Class
@@ -610,10 +638,15 @@
             // Initialize parcelas visibility
             toggleParcelas();
 
+            // Add event listeners for real-time calculation
+            document.getElementById('valor_emprestimo').addEventListener('input', calcularValorDevido);
+            document.getElementById('taxa_juros').addEventListener('change', calcularValorDevido);
+
             // Form validation
             document.getElementById('cobrancaForm').addEventListener('submit', function(e) {
                 const clienteId = document.getElementById('cliente_id').value;
-                const valorOriginal = document.getElementById('valor_original').value;
+                const valorEmprestimo = document.getElementById('valor_emprestimo').value;
+                const taxaJuros = document.getElementById('taxa_juros').value;
                 const dataVencimento = document.getElementById('data_vencimento').value;
 
                 if (!clienteId) {
@@ -622,9 +655,15 @@
                     return;
                 }
 
-                if (!valorOriginal || parseFloat(valorOriginal) <= 0) {
+                if (!valorEmprestimo || parseFloat(valorEmprestimo) <= 0) {
                     e.preventDefault();
-                    alert('Valor original deve ser maior que zero!');
+                    alert('Valor emprestado deve ser maior que zero!');
+                    return;
+                }
+
+                if (!taxaJuros) {
+                    e.preventDefault();
+                    alert('Selecione uma taxa de juros!');
                     return;
                 }
 

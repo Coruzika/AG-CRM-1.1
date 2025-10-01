@@ -909,13 +909,13 @@
             
             <div class="stat-card info">
                 <div class="stat-header">
-                    <h3>Valor Pendente</h3>
+                    <h3>Valor Total a Receber</h3>
                     <div class="stat-icon">
                         <i data-feather="trending-up"></i>
                     </div>
                 </div>
                 <div class="stat-value">R$ {{ "{:,.2f}".format(stats.valor_total_pendente).replace(',', 'X').replace('.', ',').replace('X', '.') }}</div>
-                <div class="stat-label">Total a receber</div>
+                <div class="stat-label">Principal + juros</div>
             </div>
             
             <div class="stat-card success">

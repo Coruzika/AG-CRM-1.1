@@ -97,6 +97,7 @@ def init_db():
                 juros DOUBLE PRECISION DEFAULT 0,
                 desconto DOUBLE PRECISION DEFAULT 0,
                 valor_total DOUBLE PRECISION,
+                taxa_juros DOUBLE PRECISION DEFAULT 0,
                 data_vencimento DATE NOT NULL,
                 data_pagamento DATE,
                 status TEXT DEFAULT 'Pendente',
@@ -108,6 +109,12 @@ def init_db():
                 atualizado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 CONSTRAINT fk_cobrancas_cliente FOREIGN KEY (cliente_id) REFERENCES clientes (id) ON DELETE CASCADE
             )
+        ''')
+
+        # Adicionar coluna taxa_juros se não existir
+        cur.execute('''
+            ALTER TABLE cobrancas 
+            ADD COLUMN IF NOT EXISTS taxa_juros DOUBLE PRECISION DEFAULT 0
         ''')
 
         # Tabela de histórico de pagamentos
@@ -331,7 +338,7 @@ def index():
     cur.execute("SELECT COUNT(*) as count FROM cobrancas WHERE status = 'Pago'")
     cobrancas_pagas = cur.fetchone()['count']
     
-    cur.execute("SELECT COALESCE(SUM(valor_original), 0) as total FROM cobrancas WHERE status = 'Pendente'")
+    cur.execute("SELECT COALESCE(SUM(valor_total), 0) as total FROM cobrancas WHERE status = 'Pendente'")
     valor_total_pendente = cur.fetchone()['total']
     
     cur.execute("SELECT COALESCE(SUM(valor_pago), 0) as total FROM cobrancas WHERE status = 'Pago'")
@@ -637,7 +644,9 @@ def adicionar_cobranca():
         dados = {
             'cliente_id': int(request.form['cliente_id']),
             'descricao': request.form['descricao'],
-            'valor_original': float(request.form['valor_original']),
+            'valor_original': float(request.form['valor_emprestimo']),
+            'taxa_juros': float(request.form['taxa_juros']),
+            'valor_devido': float(request.form['valor_devido']),
             'data_vencimento': request.form['data_vencimento'],
             'tipo_cobranca': request.form.get('tipo_cobranca', 'Única'),
             'numero_parcelas': int(request.form.get('numero_parcelas', 1))
@@ -660,13 +669,18 @@ def adicionar_cobranca():
             
             for i in range(dados['numero_parcelas']):
                 data_venc = data_base + timedelta(days=30 * i)
+                # Calcular valor total da parcela com juros
+                valor_total_parcela = valor_parcela + (valor_parcela * dados['taxa_juros'] / 100)
+                
                 cur.execute('''
-                    INSERT INTO cobrancas (cliente_id, descricao, valor_original, data_vencimento, 
+                    INSERT INTO cobrancas (cliente_id, descricao, valor_original, taxa_juros, valor_total, data_vencimento, 
                                          tipo_cobranca, numero_parcelas, parcela_atual)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
                 ''', (dados['cliente_id'], 
                      f"{dados['descricao']} - Parcela {i+1}/{dados['numero_parcelas']}", 
-                     valor_parcela, 
+                     valor_parcela,
+                     dados['taxa_juros'],
+                     valor_total_parcela,
                      data_venc.strftime('%Y-%m-%d'),
                      'Parcelada',
                      dados['numero_parcelas'],
@@ -674,10 +688,10 @@ def adicionar_cobranca():
         else:
             # Cobrança única
             cur.execute('''
-                INSERT INTO cobrancas (cliente_id, descricao, valor_original, data_vencimento, tipo_cobranca)
-                VALUES (%s, %s, %s, %s, %s)
+                INSERT INTO cobrancas (cliente_id, descricao, valor_original, taxa_juros, valor_total, data_vencimento, tipo_cobranca)
+                VALUES (%s, %s, %s, %s, %s, %s, %s)
             ''', (dados['cliente_id'], dados['descricao'], dados['valor_original'], 
-                 dados['data_vencimento'], 'Única'))
+                 dados['taxa_juros'], dados['valor_devido'], dados['data_vencimento'], 'Única'))
         
         conn.commit()
         cur.close()
@@ -937,7 +951,7 @@ def editar_usuario(usuario_id):
     return render_template('usuario_form.html', usuario=usuario)
 
 # --- Rotas de Configurações ---
-@app.route('/configuracoes')
+@app.route('/configuracoes', methods=['GET', 'POST'])
 @login_required
 @admin_required
 def configuracoes():
