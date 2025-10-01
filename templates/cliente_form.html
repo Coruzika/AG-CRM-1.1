@@ -420,6 +420,11 @@
                             <label for="telefone_referencia">Telefone da Referência</label>
                             <input type="text" id="telefone_referencia" name="telefone_referencia" value="{{ cliente.telefone_referencia if cliente else '' }}" placeholder="(00) 00000-0000">
                         </div>
+
+                        <div class="form-group">
+                            <label for="endereco_referencia">Endereço da Referência</label>
+                            <input type="text" id="endereco_referencia" name="endereco_referencia" value="{{ cliente.endereco_referencia if cliente else '' }}" placeholder="Endereço da pessoa de referência">
+                        </div>
                     </div>
                 </div>
 

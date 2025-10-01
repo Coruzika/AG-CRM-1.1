@@ -3,6 +3,7 @@
 import os
 import sys
 from flask import Flask, render_template, request, redirect, url_for, jsonify, flash, session, send_from_directory
+from flask_cors import CORS
 from datetime import datetime, timedelta
 from werkzeug.security import generate_password_hash, check_password_hash
 from functools import wraps
@@ -23,6 +24,9 @@ except ImportError:
 app = Flask(__name__, static_folder='build/static', static_url_path='/static')
 # Usa SECRET_KEY do ambiente em produção; gera uma chave temporária caso não definida
 app.secret_key = os.getenv('SECRET_KEY', secrets.token_hex(16))  # Chave secreta para sessões
+
+# Configuração de CORS
+CORS(app, origins=['http://localhost:3000', 'http://127.0.0.1:3000'])
 
 # --- Configuração e Inicialização do Banco de Dados ---
 DATABASE_URL = os.getenv('DATABASE_URL')
@@ -74,6 +78,7 @@ def init_db():
                 cep TEXT,
                 referencia TEXT,
                 telefone_referencia TEXT,
+                endereco_referencia TEXT,
                 observacoes TEXT,
                 criado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 atualizado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -169,6 +174,7 @@ def init_db():
         try:
             cur.execute('ALTER TABLE clientes ADD COLUMN IF NOT EXISTS referencia TEXT')
             cur.execute('ALTER TABLE clientes ADD COLUMN IF NOT EXISTS telefone_referencia TEXT')
+            cur.execute('ALTER TABLE clientes ADD COLUMN IF NOT EXISTS endereco_referencia TEXT')
             conn.commit()
         except Exception as e:
             print(f"Aviso: Erro ao adicionar campos de referência: {e}")
@@ -398,6 +404,45 @@ def listar_clientes():
     
     return render_template('clientes.html', clientes=clientes)
 
+@app.route('/api/clientes', methods=['GET'])
+@login_required
+def api_listar_clientes():
+    """API para listar todos os clientes em formato JSON."""
+    conn = get_db()
+    cur = conn.cursor(row_factory=dict_row)
+    cur.execute('''
+        SELECT 
+            c.*,
+            COALESCE(agg.total_cobrancas, 0) AS total_cobrancas,
+            COALESCE(agg.cobrancas_pendentes, 0) AS cobrancas_pendentes,
+            COALESCE(agg.valor_pendente, 0) AS valor_pendente
+        FROM clientes c
+        LEFT JOIN (
+            SELECT 
+                cliente_id,
+                COUNT(id) AS total_cobrancas,
+                SUM(CASE WHEN status = 'Pendente' THEN 1 ELSE 0 END) AS cobrancas_pendentes,
+                SUM(CASE WHEN status = 'Pendente' THEN valor_original ELSE 0 END) AS valor_pendente
+            FROM cobrancas
+            GROUP BY cliente_id
+        ) agg ON agg.cliente_id = c.id
+        ORDER BY c.nome ASC
+    ''')
+    clientes = cur.fetchall()
+    cur.close()
+    conn.close()
+    
+    # Converter para lista de dicionários
+    clientes_list = []
+    for cliente in clientes:
+        cliente_dict = dict(cliente)
+        # Converter valores decimais para float para serialização JSON
+        if cliente_dict.get('valor_pendente'):
+            cliente_dict['valor_pendente'] = float(cliente_dict['valor_pendente'])
+        clientes_list.append(cliente_dict)
+    
+    return jsonify(clientes_list)
+
 @app.route('/cliente/adicionar', methods=['GET', 'POST'])
 @login_required
 def adicionar_cliente():
@@ -415,6 +460,7 @@ def adicionar_cliente():
             'cep': request.form.get('cep', ''),
             'referencia': request.form.get('referencia', ''),
             'telefone_referencia': request.form.get('telefone_referencia', ''),
+            'endereco_referencia': request.form.get('endereco_referencia', ''),
             'observacoes': request.form.get('observacoes', '')
         }
         
@@ -428,8 +474,8 @@ def adicionar_cliente():
         try:
             cur.execute('''
                 INSERT INTO clientes (nome, cpf_cnpj, email, telefone, telefone_secundario, 
-                                    endereco, cidade, estado, cep, referencia, telefone_referencia, observacoes)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                                    endereco, cidade, estado, cep, referencia, telefone_referencia, endereco_referencia, observacoes)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             ''', tuple(dados.values()))
             conn.commit()
             flash('Cliente adicionado com sucesso!', 'success')
@@ -511,6 +557,7 @@ def editar_cliente(cliente_id):
             'cep': request.form.get('cep', ''),
             'referencia': request.form.get('referencia', ''),
             'telefone_referencia': request.form.get('telefone_referencia', ''),
+            'endereco_referencia': request.form.get('endereco_referencia', ''),
             'observacoes': request.form.get('observacoes', '')
         }
         
@@ -525,12 +572,12 @@ def editar_cliente(cliente_id):
             cur.execute('''
                 UPDATE clientes 
                 SET nome=%s, cpf_cnpj=%s, email=%s, telefone=%s, telefone_secundario=%s,
-                    endereco=%s, cidade=%s, estado=%s, cep=%s, referencia=%s, telefone_referencia=%s, observacoes=%s,
+                    endereco=%s, cidade=%s, estado=%s, cep=%s, referencia=%s, telefone_referencia=%s, endereco_referencia=%s, observacoes=%s,
                     atualizado_em=CURRENT_TIMESTAMP
                 WHERE id=%s
             ''', (dados['nome'], dados['cpf_cnpj'], dados['email'], dados['telefone'], 
                  dados['telefone_secundario'], dados['endereco'], dados['cidade'], 
-                 dados['estado'], dados['cep'], dados['referencia'], dados['telefone_referencia'], dados['observacoes'], cliente_id))
+                 dados['estado'], dados['cep'], dados['referencia'], dados['telefone_referencia'], dados['endereco_referencia'], dados['observacoes'], cliente_id))
             conn.commit()
             flash('Cliente atualizado com sucesso!', 'success')
             cur.close()
@@ -722,17 +769,6 @@ def pagar_cobranca(cobranca_id):
     return redirect(url_for('index'))
 
 
-# --- Rota "Catch-All" para servir a aplicação React ---
-# Esta rota garante que qualquer URL que não seja uma rota de API 
-# seja gerenciada pelo React, permitindo o roteamento no lado do cliente.
-@app.route('/', defaults={'path': ''})
-@app.route('/<path:path>')
-@login_required # Garante que o usuário esteja logado para carregar o app
-def serve(path):
-    if path != "" and os.path.exists(os.path.join(app.static_folder, '..', path)):
-        return send_from_directory(os.path.join(app.static_folder, '..'), path)
-    else:
-        return send_from_directory(os.path.join(app.static_folder, '..'), 'index.html')
 
 
 
@@ -1097,6 +1133,20 @@ def api_calendario_pagar(cobranca_id):
         cur.close()
         conn.close()
         return jsonify({'success': False, 'message': f'Erro ao processar pagamento: {str(e)}'}), 500
+
+
+# --- Rota "Catch-All" para servir a aplicação React ---
+# Esta rota garante que qualquer URL que não seja uma rota de API 
+# seja gerenciada pelo React, permitindo o roteamento no lado do cliente.
+# IMPORTANTE: Esta rota deve ficar por último para não interceptar as rotas de API
+@app.route('/', defaults={'path': ''})
+@app.route('/<path:path>')
+@login_required # Garante que o usuário esteja logado para carregar o app
+def serve(path):
+    if path != "" and os.path.exists(os.path.join(app.static_folder, '..', path)):
+        return send_from_directory(os.path.join(app.static_folder, '..'), path)
+    else:
+        return send_from_directory(os.path.join(app.static_folder, '..'), 'index.html')
 
 
 # --- Execução da Aplicação ---

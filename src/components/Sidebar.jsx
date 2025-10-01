@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { NavLink } from 'react-router-dom';
-import { Home, BarChart3, Calendar, Users, Menu, X } from 'lucide-react';
+import { Home, BarChart3, Calendar, Users, UserCog, Settings, Menu, X } from 'lucide-react';
 
 const Sidebar = () => {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
@@ -12,8 +12,10 @@ const Sidebar = () => {
   const navItems = [
     { to: '/', icon: Home, label: 'Dashboard' },
     { to: '/relatorios', icon: BarChart3, label: 'Relatórios' },
+    { to: '/clientes', icon: Users, label: 'Clientes' },
     { to: '/calendario', icon: Calendar, label: 'Calendário' },
-    { to: '/clientes', icon: Users, label: 'Clientes' }
+    { to: '/usuarios', icon: UserCog, label: 'Usuários' },
+    { to: '/configuracoes', icon: Settings, label: 'Configurações' }
   ];
 
   return (
