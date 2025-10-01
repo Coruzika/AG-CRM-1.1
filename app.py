@@ -768,6 +768,70 @@ def pagar_cobranca(cobranca_id):
     flash('Pagamento registrado com sucesso!', 'success')
     return redirect(url_for('index'))
 
+@app.route('/cobrancas/editar/<int:id>', methods=['GET', 'POST'])
+@login_required
+def editar_cobranca(id):
+    """Edita uma cobrança existente."""
+    conn = get_db()
+    cur = conn.cursor(row_factory=dict_row)
+    
+    # Buscar cobrança
+    cur.execute('SELECT * FROM cobrancas WHERE id = %s', (id,))
+    cobranca = cur.fetchone()
+    if not cobranca:
+        flash('Cobrança não encontrada.', 'danger')
+        cur.close()
+        conn.close()
+        return redirect(url_for('index'))
+    
+    # Buscar cliente da cobrança
+    cur.execute('SELECT * FROM clientes WHERE id = %s', (cobranca['cliente_id'],))
+    cliente = cur.fetchone()
+    if not cliente:
+        flash('Cliente não encontrado.', 'danger')
+        cur.close()
+        conn.close()
+        return redirect(url_for('index'))
+    
+    if request.method == 'POST':
+        # Obter novo valor do formulário
+        novo_valor_devido = request.form.get('valor_devido')
+        if not novo_valor_devido:
+            flash('Valor devido é obrigatório.', 'danger')
+            cur.close()
+            conn.close()
+            return render_template('cobranca_form.html', cobranca=cobranca, cliente=cliente)
+        
+        try:
+            valor_devido_float = float(novo_valor_devido)
+            if valor_devido_float <= 0:
+                flash('Valor devido deve ser maior que zero.', 'danger')
+                cur.close()
+                conn.close()
+                return render_template('cobranca_form.html', cobranca=cobranca, cliente=cliente)
+        except ValueError:
+            flash('Valor devido deve ser um número válido.', 'danger')
+            cur.close()
+            conn.close()
+            return render_template('cobranca_form.html', cobranca=cobranca, cliente=cliente)
+        
+        # Atualizar o valor_devido na cobrança
+        cur.execute('''
+            UPDATE cobrancas 
+            SET valor_original=%s, atualizado_em=CURRENT_TIMESTAMP
+            WHERE id=%s
+        ''', (valor_devido_float, id))
+        
+        conn.commit()
+        cur.close()
+        conn.close()
+        flash('Cobrança atualizada com sucesso!', 'success')
+        return redirect(url_for('visualizar_cliente', cliente_id=cobranca['cliente_id']))
+    
+    cur.close()
+    conn.close()
+    return render_template('cobranca_form.html', cobranca=cobranca, cliente=cliente)
+
 
 
 

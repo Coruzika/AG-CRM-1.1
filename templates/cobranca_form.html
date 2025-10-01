@@ -288,67 +288,90 @@
     <div class="container">
         <div class="header">
             <h1>{% if cobranca %}Editar Cobrança{% else %}Nova Cobrança{% endif %}</h1>
-            <a href="{{ url_for('index') }}" class="btn btn-secondary">← Voltar</a>
+            <a href="{{ url_for('visualizar_cliente', cliente_id=cobranca.cliente_id) if cobranca else url_for('index') }}" class="btn btn-secondary">← Voltar</a>
         </div>
 
         <div class="form-container">
-            <form method="POST" id="cobrancaForm">
+            <form method="POST" id="cobrancaForm" action="{{ url_for('editar_cobranca', id=cobranca.id) if cobranca else url_for('adicionar_cobranca') }}">
                 <div class="form-grid">
                     <div class="form-group">
                         <label for="cliente_id">Cliente <span class="required">*</span></label>
-                        <select id="cliente_id" name="cliente_id" required>
-                            <option value="">Selecione um cliente...</option>
-                            {% for cliente in clientes %}
-                            <option value="{{ cliente.id }}" {% if cobranca and cobranca.cliente_id == cliente.id %}selected{% endif %}>
-                                {{ cliente.nome }}
-                            </option>
-                            {% endfor %}
-                        </select>
+                        {% if cobranca %}
+                            <input type="text" value="{{ cliente.nome }}" readonly style="background: #f7fafc; color: #666;">
+                            <input type="hidden" name="cliente_id" value="{{ cobranca.cliente_id }}">
+                        {% else %}
+                            <select id="cliente_id" name="cliente_id" required>
+                                <option value="">Selecione um cliente...</option>
+                                {% for cliente in clientes %}
+                                <option value="{{ cliente.id }}">
+                                    {{ cliente.nome }}
+                                </option>
+                                {% endfor %}
+                            </select>
+                        {% endif %}
                     </div>
 
                     <div class="form-group">
-                        <label for="valor_original">Valor Original (R$) <span class="required">*</span></label>
-                        <input type="number" id="valor_original" name="valor_original" step="0.01" min="0.01" 
+                        <label for="valor_devido">Valor Devido (R$) <span class="required">*</span></label>
+                        <input type="number" id="valor_devido" name="valor_devido" step="0.01" min="0.01" 
                                value="{{ cobranca.valor_original if cobranca else '' }}" required>
                     </div>
 
                     <div class="form-group full-width">
                         <label for="descricao">Descrição</label>
-                        <input type="text" id="descricao" name="descricao" 
-                               value="{{ cobranca.descricao if cobranca else '' }}" 
-                               placeholder="Descreva o motivo da cobrança...">
+                        {% if cobranca %}
+                            <input type="text" id="descricao" name="descricao" 
+                                   value="{{ cobranca.descricao if cobranca else '' }}" 
+                                   placeholder="Descreva o motivo da cobrança..." readonly style="background: #f7fafc; color: #666;">
+                        {% else %}
+                            <input type="text" id="descricao" name="descricao" 
+                                   value="{{ cobranca.descricao if cobranca else '' }}" 
+                                   placeholder="Descreva o motivo da cobrança...">
+                        {% endif %}
                     </div>
 
                     <div class="form-group">
                         <label for="data_vencimento">Data de Vencimento <span class="required">*</span></label>
-                        <div class="datepicker-container">
-                            <input type="text" id="data_vencimento" name="data_vencimento" 
-                                   value="{{ cobranca.data_vencimento if cobranca else '' }}" 
-                                   placeholder="DD-MM-AAAA (domingos não disponíveis)" required readonly>
-                            <div id="datepicker" class="datepicker"></div>
-                        </div>
-                        <small style="color: #666; font-size: 12px; margin-top: 5px; display: block;">
-                            Domingos não estão disponíveis para vencimento
-                        </small>
+                        {% if cobranca %}
+                            <input type="text" value="{{ cobranca.data_vencimento.strftime('%d/%m/%Y') if cobranca.data_vencimento else '' }}" 
+                                   readonly style="background: #f7fafc; color: #666;">
+                        {% else %}
+                            <div class="datepicker-container">
+                                <input type="text" id="data_vencimento" name="data_vencimento" 
+                                       value="{{ cobranca.data_vencimento if cobranca else '' }}" 
+                                       placeholder="DD-MM-AAAA (domingos não disponíveis)" required readonly>
+                                <div id="datepicker" class="datepicker"></div>
+                            </div>
+                            <small style="color: #666; font-size: 12px; margin-top: 5px; display: block;">
+                                Domingos não estão disponíveis para vencimento
+                            </small>
+                        {% endif %}
                     </div>
 
                     <div class="form-group">
                         <label for="tipo_cobranca">Tipo de Cobrança</label>
-                        <select id="tipo_cobranca" name="tipo_cobranca" onchange="toggleParcelas()">
-                            <option value="Única" {% if cobranca and cobranca.tipo_cobranca == 'Única' %}selected{% endif %}>Única</option>
-                            <option value="Parcelada" {% if cobranca and cobranca.tipo_cobranca == 'Parcelada' %}selected{% endif %}>Parcelada</option>
-                        </select>
+                        {% if cobranca %}
+                            <input type="text" value="{{ cobranca.tipo_cobranca if cobranca else 'Única' }}" 
+                                   readonly style="background: #f7fafc; color: #666;">
+                        {% else %}
+                            <select id="tipo_cobranca" name="tipo_cobranca" onchange="toggleParcelas()">
+                                <option value="Única" {% if cobranca and cobranca.tipo_cobranca == 'Única' %}selected{% endif %}>Única</option>
+                                <option value="Parcelada" {% if cobranca and cobranca.tipo_cobranca == 'Parcelada' %}selected{% endif %}>Parcelada</option>
+                            </select>
+                        {% endif %}
                     </div>
 
+                    {% if not cobranca %}
                     <div class="form-group" id="parcelasDiv">
                         <label for="numero_parcelas">Número de Parcelas</label>
                         <input type="number" id="numero_parcelas" name="numero_parcelas" 
                                min="2" max="12" value="{{ cobranca.numero_parcelas if cobranca else '2' }}">
                     </div>
+                    {% endif %}
                 </div>
 
                 <div class="form-actions">
-                    <a href="{{ url_for('index') }}" class="btn-cancel">Cancelar</a>
+                    <a href="{{ url_for('visualizar_cliente', cliente_id=cobranca.cliente_id) if cobranca else url_for('index') }}" class="btn-cancel">Cancelar</a>
                     <button type="submit" class="btn-submit">
                         {% if cobranca %}Atualizar Cobrança{% else %}Criar Cobrança{% endif %}
                     </button>
