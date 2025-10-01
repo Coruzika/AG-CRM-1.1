@@ -68,17 +68,19 @@ def init_db():
             CREATE TABLE IF NOT EXISTS clientes (
                 id SERIAL PRIMARY KEY,
                 nome TEXT NOT NULL,
-                cpf_cnpj TEXT UNIQUE,
+                cpf_cnpj TEXT UNIQUE NOT NULL,
+                rg TEXT NOT NULL,
                 email TEXT,
                 telefone TEXT,
                 telefone_secundario TEXT,
-                endereco TEXT,
-                cidade TEXT,
-                estado TEXT,
-                cep TEXT,
-                referencia TEXT,
-                telefone_referencia TEXT,
-                endereco_referencia TEXT,
+                chave_pix TEXT NOT NULL,
+                endereco TEXT NOT NULL,
+                cidade TEXT NOT NULL,
+                estado TEXT NOT NULL,
+                cep TEXT NOT NULL,
+                referencia TEXT NOT NULL,
+                telefone_referencia TEXT NOT NULL,
+                endereco_referencia TEXT NOT NULL,
                 observacoes TEXT,
                 criado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 atualizado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -182,6 +184,8 @@ def init_db():
             cur.execute('ALTER TABLE clientes ADD COLUMN IF NOT EXISTS referencia TEXT')
             cur.execute('ALTER TABLE clientes ADD COLUMN IF NOT EXISTS telefone_referencia TEXT')
             cur.execute('ALTER TABLE clientes ADD COLUMN IF NOT EXISTS endereco_referencia TEXT')
+            cur.execute('ALTER TABLE clientes ADD COLUMN IF NOT EXISTS chave_pix TEXT')
+            cur.execute('ALTER TABLE clientes ADD COLUMN IF NOT EXISTS rg TEXT')
             conn.commit()
         except Exception as e:
             print(f"Aviso: Erro ao adicionar campos de referência: {e}")
@@ -458,9 +462,11 @@ def adicionar_cliente():
         dados = {
             'nome': request.form['nome'],
             'cpf_cnpj': request.form.get('cpf_cnpj', ''),
+            'rg': request.form.get('rg', ''),
             'email': request.form.get('email', ''),
             'telefone': request.form['telefone'],
             'telefone_secundario': request.form.get('telefone_secundario', ''),
+            'chave_pix': request.form.get('chave_pix', ''),
             'endereco': request.form.get('endereco', ''),
             'cidade': request.form.get('cidade', ''),
             'estado': request.form.get('estado', ''),
@@ -472,6 +478,46 @@ def adicionar_cliente():
         }
         
         # Validação
+        if not dados['cpf_cnpj']:
+            flash('CPF/CNPJ é obrigatório.', 'danger')
+            return render_template('cliente_form.html', cliente=dados)
+        
+        if not dados['rg']:
+            flash('RG é obrigatório.', 'danger')
+            return render_template('cliente_form.html', cliente=dados)
+        
+        if not dados['chave_pix']:
+            flash('Chave Pix é obrigatória.', 'danger')
+            return render_template('cliente_form.html', cliente=dados)
+        
+        if not dados['referencia']:
+            flash('Nome da referência é obrigatório.', 'danger')
+            return render_template('cliente_form.html', cliente=dados)
+        
+        if not dados['telefone_referencia']:
+            flash('Telefone da referência é obrigatório.', 'danger')
+            return render_template('cliente_form.html', cliente=dados)
+        
+        if not dados['endereco_referencia']:
+            flash('Endereço da referência é obrigatório.', 'danger')
+            return render_template('cliente_form.html', cliente=dados)
+        
+        if not dados['endereco']:
+            flash('Endereço é obrigatório.', 'danger')
+            return render_template('cliente_form.html', cliente=dados)
+        
+        if not dados['cidade']:
+            flash('Cidade é obrigatória.', 'danger')
+            return render_template('cliente_form.html', cliente=dados)
+        
+        if not dados['estado']:
+            flash('Estado é obrigatório.', 'danger')
+            return render_template('cliente_form.html', cliente=dados)
+        
+        if not dados['cep']:
+            flash('CEP é obrigatório.', 'danger')
+            return render_template('cliente_form.html', cliente=dados)
+        
         if dados['cpf_cnpj'] and not validar_cpf_cnpj(dados['cpf_cnpj']):
             flash('CPF/CNPJ inválido.', 'danger')
             return render_template('cliente_form.html', cliente=dados)
@@ -480,9 +526,9 @@ def adicionar_cliente():
         cur = conn.cursor()
         try:
             cur.execute('''
-                INSERT INTO clientes (nome, cpf_cnpj, email, telefone, telefone_secundario, 
+                INSERT INTO clientes (nome, cpf_cnpj, rg, email, telefone, telefone_secundario, chave_pix,
                                     endereco, cidade, estado, cep, referencia, telefone_referencia, endereco_referencia, observacoes)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             ''', tuple(dados.values()))
             conn.commit()
             flash('Cliente adicionado com sucesso!', 'success')
@@ -571,9 +617,11 @@ def editar_cliente(cliente_id):
         dados = {
             'nome': request.form['nome'],
             'cpf_cnpj': request.form.get('cpf_cnpj', ''),
+            'rg': request.form.get('rg', ''),
             'email': request.form.get('email', ''),
             'telefone': request.form['telefone'],
             'telefone_secundario': request.form.get('telefone_secundario', ''),
+            'chave_pix': request.form.get('chave_pix', ''),
             'endereco': request.form.get('endereco', ''),
             'cidade': request.form.get('cidade', ''),
             'estado': request.form.get('estado', ''),
@@ -585,6 +633,66 @@ def editar_cliente(cliente_id):
         }
         
         # Validação
+        if not dados['cpf_cnpj']:
+            flash('CPF/CNPJ é obrigatório.', 'danger')
+            cur.close()
+            conn.close()
+            return render_template('cliente_form.html', cliente=dados)
+        
+        if not dados['rg']:
+            flash('RG é obrigatório.', 'danger')
+            cur.close()
+            conn.close()
+            return render_template('cliente_form.html', cliente=dados)
+        
+        if not dados['chave_pix']:
+            flash('Chave Pix é obrigatória.', 'danger')
+            cur.close()
+            conn.close()
+            return render_template('cliente_form.html', cliente=dados)
+        
+        if not dados['referencia']:
+            flash('Nome da referência é obrigatório.', 'danger')
+            cur.close()
+            conn.close()
+            return render_template('cliente_form.html', cliente=dados)
+        
+        if not dados['telefone_referencia']:
+            flash('Telefone da referência é obrigatório.', 'danger')
+            cur.close()
+            conn.close()
+            return render_template('cliente_form.html', cliente=dados)
+        
+        if not dados['endereco_referencia']:
+            flash('Endereço da referência é obrigatório.', 'danger')
+            cur.close()
+            conn.close()
+            return render_template('cliente_form.html', cliente=dados)
+        
+        if not dados['endereco']:
+            flash('Endereço é obrigatório.', 'danger')
+            cur.close()
+            conn.close()
+            return render_template('cliente_form.html', cliente=dados)
+        
+        if not dados['cidade']:
+            flash('Cidade é obrigatória.', 'danger')
+            cur.close()
+            conn.close()
+            return render_template('cliente_form.html', cliente=dados)
+        
+        if not dados['estado']:
+            flash('Estado é obrigatório.', 'danger')
+            cur.close()
+            conn.close()
+            return render_template('cliente_form.html', cliente=dados)
+        
+        if not dados['cep']:
+            flash('CEP é obrigatório.', 'danger')
+            cur.close()
+            conn.close()
+            return render_template('cliente_form.html', cliente=dados)
+        
         if dados['cpf_cnpj'] and not validar_cpf_cnpj(dados['cpf_cnpj']):
             flash('CPF/CNPJ inválido.', 'danger')
             cur.close()
@@ -594,12 +702,12 @@ def editar_cliente(cliente_id):
         try:
             cur.execute('''
                 UPDATE clientes 
-                SET nome=%s, cpf_cnpj=%s, email=%s, telefone=%s, telefone_secundario=%s,
+                SET nome=%s, cpf_cnpj=%s, rg=%s, email=%s, telefone=%s, telefone_secundario=%s, chave_pix=%s,
                     endereco=%s, cidade=%s, estado=%s, cep=%s, referencia=%s, telefone_referencia=%s, endereco_referencia=%s, observacoes=%s,
                     atualizado_em=CURRENT_TIMESTAMP
                 WHERE id=%s
-            ''', (dados['nome'], dados['cpf_cnpj'], dados['email'], dados['telefone'], 
-                 dados['telefone_secundario'], dados['endereco'], dados['cidade'], 
+            ''', (dados['nome'], dados['cpf_cnpj'], dados['rg'], dados['email'], dados['telefone'], 
+                 dados['telefone_secundario'], dados['chave_pix'], dados['endereco'], dados['cidade'], 
                  dados['estado'], dados['cep'], dados['referencia'], dados['telefone_referencia'], dados['endereco_referencia'], dados['observacoes'], cliente_id))
             conn.commit()
             flash('Cliente atualizado com sucesso!', 'success')

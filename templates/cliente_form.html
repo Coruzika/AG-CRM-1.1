@@ -377,9 +377,15 @@
                         </div>
 
                         <div class="form-group">
-                            <label for="cpf_cnpj">CPF/CNPJ</label>
-                            <input type="text" id="cpf_cnpj" name="cpf_cnpj" value="{{ cliente.cpf_cnpj if cliente else '' }}" placeholder="000.000.000-00 ou 00.000.000/0000-00">
+                            <label for="cpf_cnpj">CPF/CNPJ <span class="required">*</span></label>
+                            <input type="text" id="cpf_cnpj" name="cpf_cnpj" value="{{ cliente.cpf_cnpj if cliente else '' }}" placeholder="000.000.000-00 ou 00.000.000/0000-00" required>
                             <div class="error-message" id="cpf_cnpj-error"></div>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="rg">RG <span class="required">*</span></label>
+                            <input type="text" id="rg" name="rg" value="{{ cliente.rg if cliente else '' }}" placeholder="00.000.000-0" required>
+                            <div class="error-message" id="rg-error"></div>
                         </div>
 
                         <div class="form-group">
@@ -404,6 +410,11 @@
                             <label for="telefone_secundario">Telefone Secundário</label>
                             <input type="text" id="telefone_secundario" name="telefone_secundario" value="{{ cliente.telefone_secundario if cliente else '' }}" placeholder="(00) 00000-0000">
                         </div>
+
+                        <div class="form-group">
+                            <label for="chave_pix">Chave Pix <span class="required">*</span></label>
+                            <input type="text" id="chave_pix" name="chave_pix" value="{{ cliente.chave_pix if cliente else '' }}" placeholder="CPF, e-mail, telefone ou chave aleatória" required>
+                        </div>
                     </div>
                 </div>
 
@@ -412,18 +423,18 @@
                     <h3 class="section-title">Referência</h3>
                     <div class="form-grid">
                         <div class="form-group">
-                            <label for="referencia">Nome da Referência</label>
-                            <input type="text" id="referencia" name="referencia" value="{{ cliente.referencia if cliente else '' }}" placeholder="Nome da pessoa de referência">
+                            <label for="referencia">Nome da Referência <span class="required">*</span></label>
+                            <input type="text" id="referencia" name="referencia" value="{{ cliente.referencia if cliente else '' }}" placeholder="Nome da pessoa de referência" required>
                         </div>
 
                         <div class="form-group">
-                            <label for="telefone_referencia">Telefone da Referência</label>
-                            <input type="text" id="telefone_referencia" name="telefone_referencia" value="{{ cliente.telefone_referencia if cliente else '' }}" placeholder="(00) 00000-0000">
+                            <label for="telefone_referencia">Telefone da Referência <span class="required">*</span></label>
+                            <input type="text" id="telefone_referencia" name="telefone_referencia" value="{{ cliente.telefone_referencia if cliente else '' }}" placeholder="(00) 00000-0000" required>
                         </div>
 
                         <div class="form-group">
-                            <label for="endereco_referencia">Endereço da Referência</label>
-                            <input type="text" id="endereco_referencia" name="endereco_referencia" value="{{ cliente.endereco_referencia if cliente else '' }}" placeholder="Endereço da pessoa de referência">
+                            <label for="endereco_referencia">Endereço da Referência <span class="required">*</span></label>
+                            <input type="text" id="endereco_referencia" name="endereco_referencia" value="{{ cliente.endereco_referencia if cliente else '' }}" placeholder="Endereço da pessoa de referência" required>
                         </div>
                     </div>
                 </div>
@@ -433,18 +444,18 @@
                     <h3 class="section-title">Endereço</h3>
                     <div class="form-grid">
                         <div class="form-group full-width">
-                            <label for="endereco">Endereço Completo</label>
-                            <input type="text" id="endereco" name="endereco" value="{{ cliente.endereco if cliente else '' }}" placeholder="Rua, número, bairro">
+                            <label for="endereco">Endereço Completo <span class="required">*</span></label>
+                            <input type="text" id="endereco" name="endereco" value="{{ cliente.endereco if cliente else '' }}" placeholder="Rua, número, bairro" required>
                         </div>
 
                         <div class="form-group">
-                            <label for="cidade">Cidade</label>
-                            <input type="text" id="cidade" name="cidade" value="{{ cliente.cidade if cliente else '' }}">
+                            <label for="cidade">Cidade <span class="required">*</span></label>
+                            <input type="text" id="cidade" name="cidade" value="{{ cliente.cidade if cliente else '' }}" required>
                         </div>
 
                         <div class="form-group">
-                            <label for="estado">Estado</label>
-                            <select id="estado" name="estado">
+                            <label for="estado">Estado <span class="required">*</span></label>
+                            <select id="estado" name="estado" required>
                                 <option value="">Selecione...</option>
                                 {% set estados = ['AC', 'AL', 'AP', 'AM', 'BA', 'CE', 'DF', 'ES', 'GO', 'MA', 'MT', 'MS', 'MG', 'PA', 'PB', 'PR', 'PE', 'PI', 'RJ', 'RN', 'RS', 'RO', 'RR', 'SC', 'SP', 'SE', 'TO'] %}
                                 {% for uf in estados %}
@@ -454,8 +465,8 @@
                         </div>
 
                         <div class="form-group">
-                            <label for="cep">CEP</label>
-                            <input type="text" id="cep" name="cep" value="{{ cliente.cep if cliente else '' }}" placeholder="00000-000">
+                            <label for="cep">CEP <span class="required">*</span></label>
+                            <input type="text" id="cep" name="cep" value="{{ cliente.cep if cliente else '' }}" placeholder="00000-000" required>
                         </div>
                     </div>
                 </div>
@@ -504,6 +515,14 @@
             input.value = value;
         }
 
+        function maskRg(input) {
+            let value = input.value.replace(/\D/g, '');
+            if (value.length <= 9) {
+                value = value.replace(/(\d{2})(\d{3})(\d{3})(\d{1})/, '$1.$2.$3-$4');
+            }
+            input.value = value;
+        }
+
         function maskCep(input) {
             let value = input.value.replace(/\D/g, '');
             value = value.replace(/(\d{5})(\d{3})/, '$1-$2');
@@ -546,8 +565,67 @@
                 isValid = false;
             }
 
-            // Validate CPF/CNPJ
             const cpfCnpj = document.getElementById('cpf_cnpj').value.trim();
+            if (!cpfCnpj) {
+                errors.cpf_cnpj = 'CPF/CNPJ é obrigatório';
+                isValid = false;
+            }
+
+            const rg = document.getElementById('rg').value.trim();
+            if (!rg) {
+                errors.rg = 'RG é obrigatório';
+                isValid = false;
+            }
+
+            const chavePix = document.getElementById('chave_pix').value.trim();
+            if (!chavePix) {
+                errors.chave_pix = 'Chave Pix é obrigatória';
+                isValid = false;
+            }
+
+            const referencia = document.getElementById('referencia').value.trim();
+            if (!referencia) {
+                errors.referencia = 'Nome da referência é obrigatório';
+                isValid = false;
+            }
+
+            const telefoneReferencia = document.getElementById('telefone_referencia').value.trim();
+            if (!telefoneReferencia) {
+                errors.telefone_referencia = 'Telefone da referência é obrigatório';
+                isValid = false;
+            }
+
+            const enderecoReferencia = document.getElementById('endereco_referencia').value.trim();
+            if (!enderecoReferencia) {
+                errors.endereco_referencia = 'Endereço da referência é obrigatório';
+                isValid = false;
+            }
+
+            const endereco = document.getElementById('endereco').value.trim();
+            if (!endereco) {
+                errors.endereco = 'Endereço é obrigatório';
+                isValid = false;
+            }
+
+            const cidade = document.getElementById('cidade').value.trim();
+            if (!cidade) {
+                errors.cidade = 'Cidade é obrigatória';
+                isValid = false;
+            }
+
+            const estado = document.getElementById('estado').value.trim();
+            if (!estado) {
+                errors.estado = 'Estado é obrigatório';
+                isValid = false;
+            }
+
+            const cep = document.getElementById('cep').value.trim();
+            if (!cep) {
+                errors.cep = 'CEP é obrigatório';
+                isValid = false;
+            }
+
+            // Validate CPF/CNPJ format
             if (cpfCnpj && !validateCpfCnpj(cpfCnpj)) {
                 errors.cpf_cnpj = 'CPF/CNPJ inválido';
                 isValid = false;
@@ -581,6 +659,9 @@
 
             const cpfCnpjInput = document.getElementById('cpf_cnpj');
             cpfCnpjInput.addEventListener('input', () => maskCpfCnpj(cpfCnpjInput));
+
+            const rgInput = document.getElementById('rg');
+            rgInput.addEventListener('input', () => maskRg(rgInput));
 
             const cepInput = document.getElementById('cep');
             cepInput.addEventListener('input', () => maskCep(cepInput));
@@ -633,12 +714,202 @@
 
             document.getElementById('cpf_cnpj').addEventListener('blur', function() {
                 const cpfCnpj = this.value.trim();
-                if (cpfCnpj && !validateCpfCnpj(cpfCnpj)) {
+                if (!cpfCnpj) {
+                    this.closest('.form-group').classList.add('error');
+                    document.getElementById('cpf_cnpj-error').textContent = 'CPF/CNPJ é obrigatório';
+                } else if (!validateCpfCnpj(cpfCnpj)) {
                     this.closest('.form-group').classList.add('error');
                     document.getElementById('cpf_cnpj-error').textContent = 'CPF/CNPJ inválido';
                 } else {
                     this.closest('.form-group').classList.remove('error');
                     document.getElementById('cpf_cnpj-error').textContent = '';
+                }
+            });
+
+            document.getElementById('rg').addEventListener('blur', function() {
+                const rg = this.value.trim();
+                if (!rg) {
+                    this.closest('.form-group').classList.add('error');
+                    document.getElementById('rg-error').textContent = 'RG é obrigatório';
+                } else {
+                    this.closest('.form-group').classList.remove('error');
+                    document.getElementById('rg-error').textContent = '';
+                }
+            });
+
+            document.getElementById('chave_pix').addEventListener('blur', function() {
+                const chavePix = this.value.trim();
+                if (!chavePix) {
+                    this.closest('.form-group').classList.add('error');
+                    // Create error message element if it doesn't exist
+                    let errorMsg = document.getElementById('chave_pix-error');
+                    if (!errorMsg) {
+                        errorMsg = document.createElement('div');
+                        errorMsg.className = 'error-message';
+                        errorMsg.id = 'chave_pix-error';
+                        this.closest('.form-group').appendChild(errorMsg);
+                    }
+                    errorMsg.textContent = 'Chave Pix é obrigatória';
+                } else {
+                    this.closest('.form-group').classList.remove('error');
+                    const errorMsg = document.getElementById('chave_pix-error');
+                    if (errorMsg) {
+                        errorMsg.textContent = '';
+                    }
+                }
+            });
+
+            document.getElementById('referencia').addEventListener('blur', function() {
+                const referencia = this.value.trim();
+                if (!referencia) {
+                    this.closest('.form-group').classList.add('error');
+                    // Create error message element if it doesn't exist
+                    let errorMsg = document.getElementById('referencia-error');
+                    if (!errorMsg) {
+                        errorMsg = document.createElement('div');
+                        errorMsg.className = 'error-message';
+                        errorMsg.id = 'referencia-error';
+                        this.closest('.form-group').appendChild(errorMsg);
+                    }
+                    errorMsg.textContent = 'Nome da referência é obrigatório';
+                } else {
+                    this.closest('.form-group').classList.remove('error');
+                    const errorMsg = document.getElementById('referencia-error');
+                    if (errorMsg) {
+                        errorMsg.textContent = '';
+                    }
+                }
+            });
+
+            document.getElementById('telefone_referencia').addEventListener('blur', function() {
+                const telefoneReferencia = this.value.trim();
+                if (!telefoneReferencia) {
+                    this.closest('.form-group').classList.add('error');
+                    // Create error message element if it doesn't exist
+                    let errorMsg = document.getElementById('telefone_referencia-error');
+                    if (!errorMsg) {
+                        errorMsg = document.createElement('div');
+                        errorMsg.className = 'error-message';
+                        errorMsg.id = 'telefone_referencia-error';
+                        this.closest('.form-group').appendChild(errorMsg);
+                    }
+                    errorMsg.textContent = 'Telefone da referência é obrigatório';
+                } else {
+                    this.closest('.form-group').classList.remove('error');
+                    const errorMsg = document.getElementById('telefone_referencia-error');
+                    if (errorMsg) {
+                        errorMsg.textContent = '';
+                    }
+                }
+            });
+
+            document.getElementById('endereco_referencia').addEventListener('blur', function() {
+                const enderecoReferencia = this.value.trim();
+                if (!enderecoReferencia) {
+                    this.closest('.form-group').classList.add('error');
+                    // Create error message element if it doesn't exist
+                    let errorMsg = document.getElementById('endereco_referencia-error');
+                    if (!errorMsg) {
+                        errorMsg = document.createElement('div');
+                        errorMsg.className = 'error-message';
+                        errorMsg.id = 'endereco_referencia-error';
+                        this.closest('.form-group').appendChild(errorMsg);
+                    }
+                    errorMsg.textContent = 'Endereço da referência é obrigatório';
+                } else {
+                    this.closest('.form-group').classList.remove('error');
+                    const errorMsg = document.getElementById('endereco_referencia-error');
+                    if (errorMsg) {
+                        errorMsg.textContent = '';
+                    }
+                }
+            });
+
+            document.getElementById('endereco').addEventListener('blur', function() {
+                const endereco = this.value.trim();
+                if (!endereco) {
+                    this.closest('.form-group').classList.add('error');
+                    // Create error message element if it doesn't exist
+                    let errorMsg = document.getElementById('endereco-error');
+                    if (!errorMsg) {
+                        errorMsg = document.createElement('div');
+                        errorMsg.className = 'error-message';
+                        errorMsg.id = 'endereco-error';
+                        this.closest('.form-group').appendChild(errorMsg);
+                    }
+                    errorMsg.textContent = 'Endereço é obrigatório';
+                } else {
+                    this.closest('.form-group').classList.remove('error');
+                    const errorMsg = document.getElementById('endereco-error');
+                    if (errorMsg) {
+                        errorMsg.textContent = '';
+                    }
+                }
+            });
+
+            document.getElementById('cidade').addEventListener('blur', function() {
+                const cidade = this.value.trim();
+                if (!cidade) {
+                    this.closest('.form-group').classList.add('error');
+                    // Create error message element if it doesn't exist
+                    let errorMsg = document.getElementById('cidade-error');
+                    if (!errorMsg) {
+                        errorMsg = document.createElement('div');
+                        errorMsg.className = 'error-message';
+                        errorMsg.id = 'cidade-error';
+                        this.closest('.form-group').appendChild(errorMsg);
+                    }
+                    errorMsg.textContent = 'Cidade é obrigatória';
+                } else {
+                    this.closest('.form-group').classList.remove('error');
+                    const errorMsg = document.getElementById('cidade-error');
+                    if (errorMsg) {
+                        errorMsg.textContent = '';
+                    }
+                }
+            });
+
+            document.getElementById('estado').addEventListener('blur', function() {
+                const estado = this.value.trim();
+                if (!estado) {
+                    this.closest('.form-group').classList.add('error');
+                    // Create error message element if it doesn't exist
+                    let errorMsg = document.getElementById('estado-error');
+                    if (!errorMsg) {
+                        errorMsg = document.createElement('div');
+                        errorMsg.className = 'error-message';
+                        errorMsg.id = 'estado-error';
+                        this.closest('.form-group').appendChild(errorMsg);
+                    }
+                    errorMsg.textContent = 'Estado é obrigatório';
+                } else {
+                    this.closest('.form-group').classList.remove('error');
+                    const errorMsg = document.getElementById('estado-error');
+                    if (errorMsg) {
+                        errorMsg.textContent = '';
+                    }
+                }
+            });
+
+            document.getElementById('cep').addEventListener('blur', function() {
+                const cep = this.value.trim();
+                if (!cep) {
+                    this.closest('.form-group').classList.add('error');
+                    // Create error message element if it doesn't exist
+                    let errorMsg = document.getElementById('cep-error');
+                    if (!errorMsg) {
+                        errorMsg = document.createElement('div');
+                        errorMsg.className = 'error-message';
+                        errorMsg.id = 'cep-error';
+                        this.closest('.form-group').appendChild(errorMsg);
+                    }
+                    errorMsg.textContent = 'CEP é obrigatório';
+                } else {
+                    this.closest('.form-group').classList.remove('error');
+                    const errorMsg = document.getElementById('cep-error');
+                    if (errorMsg) {
+                        errorMsg.textContent = '';
+                    }
                 }
             });
         });
