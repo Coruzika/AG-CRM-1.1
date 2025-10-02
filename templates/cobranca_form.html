@@ -158,9 +158,6 @@
             background: #cbd5e0;
         }
 
-        #parcelasDiv {
-            display: none;
-        }
 
         /* Custom Datepicker Styles */
         .datepicker-container {
@@ -346,7 +343,7 @@
                     </div>
 
                     <div class="form-group">
-                        <label for="data_vencimento">Data de Vencimento <span class="required">*</span></label>
+                        <label for="data_vencimento">Data da Primeira Parcela <span class="required">*</span></label>
                         {% if cobranca %}
                             <input type="text" value="{{ cobranca.data_vencimento.strftime('%d/%m/%Y') if cobranca.data_vencimento else '' }}" 
                                    readonly style="background: #f7fafc; color: #666;">
@@ -358,31 +355,11 @@
                                 <div id="datepicker" class="datepicker"></div>
                             </div>
                             <small style="color: #666; font-size: 12px; margin-top: 5px; display: block;">
-                                Domingos não estão disponíveis para vencimento
+                                Domingos não estão disponíveis. As parcelas serão geradas diariamente a partir desta data.
                             </small>
                         {% endif %}
                     </div>
 
-                    <div class="form-group">
-                        <label for="tipo_cobranca">Tipo de Cobrança</label>
-                        {% if cobranca %}
-                            <input type="text" value="{{ cobranca.tipo_cobranca if cobranca else 'Única' }}" 
-                                   readonly style="background: #f7fafc; color: #666;">
-                        {% else %}
-                            <select id="tipo_cobranca" name="tipo_cobranca" onchange="toggleParcelas()">
-                                <option value="Única" {% if cobranca and cobranca.tipo_cobranca == 'Única' %}selected{% endif %}>Única</option>
-                                <option value="Parcelada" {% if cobranca and cobranca.tipo_cobranca == 'Parcelada' %}selected{% endif %}>Parcelada</option>
-                            </select>
-                        {% endif %}
-                    </div>
-
-                    {% if not cobranca %}
-                    <div class="form-group" id="parcelasDiv">
-                        <label for="numero_parcelas">Número de Parcelas</label>
-                        <input type="number" id="numero_parcelas" name="numero_parcelas" 
-                               min="2" max="12" value="{{ cobranca.numero_parcelas if cobranca else '2' }}">
-                    </div>
-                    {% endif %}
                 </div>
 
                 <div class="form-actions">
@@ -396,11 +373,6 @@
     </div>
 
     <script>
-        function toggleParcelas() {
-            const tipo = document.getElementById('tipo_cobranca').value;
-            const parcelasDiv = document.getElementById('parcelasDiv');
-            parcelasDiv.style.display = tipo === 'Parcelada' ? 'block' : 'none';
-        }
 
         function calcularValorDevido() {
             const valorEmprestimo = parseFloat(document.getElementById('valor_emprestimo').value) || 0;
@@ -635,12 +607,43 @@
             // Initialize custom datepicker
             window.datepicker = new CustomDatepicker('data_vencimento', 'datepicker');
 
-            // Initialize parcelas visibility
-            toggleParcelas();
-
             // Add event listeners for real-time calculation
             document.getElementById('valor_emprestimo').addEventListener('input', calcularValorDevido);
-            document.getElementById('taxa_juros').addEventListener('change', calcularValorDevido);
+            
+            // Event listener for taxa_juros with automatic date calculation
+            document.getElementById('taxa_juros').addEventListener('change', function() {
+                // Calculate valor devido
+                calcularValorDevido();
+                
+                // Calculate automatic due date
+                const taxaSelecionada = parseInt(this.value);
+                let diasParaAdicionar = 0;
+
+                if (taxaSelecionada === 30) {
+                    diasParaAdicionar = 10;
+                } else if (taxaSelecionada === 60) {
+                    diasParaAdicionar = 15;
+                }
+
+                if (diasParaAdicionar > 0) {
+                    const hoje = new Date();
+                    const dataVencimento = new Date(hoje.setDate(hoje.getDate() + diasParaAdicionar));
+
+                    // Ajusta para a segunda-feira se a data final cair em um domingo
+                    if (dataVencimento.getDay() === 0) { // 0 = Domingo
+                        dataVencimento.setDate(dataVencimento.getDate() + 1);
+                    }
+
+                    // Formata a data para o padrão DD-MM-YYYY (formato do datepicker)
+                    const dia = String(dataVencimento.getDate()).padStart(2, '0');
+                    const mes = String(dataVencimento.getMonth() + 1).padStart(2, '0');
+                    const ano = dataVencimento.getFullYear();
+                    const dataFormatada = `${dia}-${mes}-${ano}`;
+
+                    // Preenche o campo de data automaticamente
+                    document.getElementById('data_vencimento').value = dataFormatada;
+                }
+            });
 
             // Validação para impedir domingos como data de vencimento
             if (dataInput) {

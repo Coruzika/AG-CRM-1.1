@@ -152,6 +152,25 @@ def init_db():
         ''')
 
 
+        # Tabela de parcelas
+        cur.execute('''
+            CREATE TABLE IF NOT EXISTS parcelas (
+                id SERIAL PRIMARY KEY,
+                cobranca_id INTEGER NOT NULL,
+                numero_parcela INTEGER NOT NULL,
+                valor DOUBLE PRECISION NOT NULL,
+                data_vencimento DATE NOT NULL,
+                status TEXT DEFAULT 'Pendente',
+                valor_pago DOUBLE PRECISION DEFAULT 0,
+                data_pagamento DATE,
+                forma_pagamento TEXT,
+                observacoes TEXT,
+                criado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                atualizado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                CONSTRAINT fk_parcelas_cobranca FOREIGN KEY (cobranca_id) REFERENCES cobrancas (id) ON DELETE CASCADE
+            )
+        ''')
+
         # Tabela de configurações do sistema
         cur.execute('''
             CREATE TABLE IF NOT EXISTS configuracoes (
@@ -577,6 +596,21 @@ def visualizar_cliente(cliente_id):
     cur.close()
     conn.close()
     
+    # Buscar parcelas para cobranças parceladas
+    parcelas_por_cobranca = {}
+    for cobranca in cobrancas:
+        if cobranca['tipo_cobranca'] == 'Parcelada':
+            conn_temp = get_db()
+            cur_temp = conn_temp.cursor(row_factory=dict_row)
+            cur_temp.execute('''
+                SELECT * FROM parcelas 
+                WHERE cobranca_id = %s 
+                ORDER BY numero_parcela ASC
+            ''', (cobranca['id'],))
+            parcelas_por_cobranca[cobranca['id']] = cur_temp.fetchall()
+            cur_temp.close()
+            conn_temp.close()
+    
     # Calcular multa dinâmica para cada cobrança
     hoje = date.today()
     cobrancas_processadas = []
@@ -591,6 +625,11 @@ def visualizar_cliente(cliente_id):
                 cobranca_dict['valor_multa'] = dias_atraso * 40.00
 
             cobranca_dict['total_a_pagar'] = cobranca_dict['valor_original'] + cobranca_dict['valor_multa']
+            
+            # Adicionar parcelas se for cobrança parcelada
+            if cobranca_dict['tipo_cobranca'] == 'Parcelada':
+                cobranca_dict['parcelas'] = parcelas_por_cobranca.get(cobranca['id'], [])
+            
             cobrancas_processadas.append(cobranca_dict)
     
     return render_template('cliente_detalhes.html', 
@@ -765,62 +804,74 @@ def adicionar_cobranca():
     conn.close()
     
     if request.method == 'POST':
-        dados = {
-            'cliente_id': int(request.form['cliente_id']),
-            'descricao': request.form['descricao'],
-            'valor_original': float(request.form['valor_emprestimo']),
-            'taxa_juros': float(request.form['taxa_juros']),
-            'valor_devido': float(request.form['valor_devido']),
-            'data_vencimento': request.form['data_vencimento'],
-            'tipo_cobranca': request.form.get('tipo_cobranca', 'Única'),
-            'numero_parcelas': int(request.form.get('numero_parcelas', 1))
-        }
+        # Obter dados do formulário
+        cliente_id = int(request.form['cliente_id'])
+        descricao = request.form['descricao']
+        valor_emprestimo = float(request.form['valor_emprestimo'])
+        taxa_juros = float(request.form['taxa_juros'])
+        data_primeira_parcela = request.form['data_vencimento']
         
-        # Validar se a data de vencimento não é domingo
-        data_venc = datetime.strptime(dados['data_vencimento'], '%Y-%m-%d')
+        # Validar se a data não é domingo
+        data_venc = datetime.strptime(data_primeira_parcela, '%Y-%m-%d')
         if data_venc.weekday() == 6:  # 6 = domingo (0=segunda, 6=domingo)
             flash('Domingos não são permitidos para data de vencimento. Selecione outro dia.', 'danger')
             return render_template('cobranca_form.html', clientes=clientes, cobranca=None)
         
+        # Determinar número de parcelas baseado na taxa de juros
+        if taxa_juros == 30:
+            numero_parcelas = 10
+        elif taxa_juros == 60:
+            numero_parcelas = 15
+        else:
+            flash('Taxa de juros inválida. Use 30% ou 60%.', 'danger')
+            return render_template('cobranca_form.html', clientes=clientes, cobranca=None)
+        
+        # Calcular valor total com juros
+        valor_devido_total = valor_emprestimo * (1 + (taxa_juros / 100))
+        valor_parcela = valor_devido_total / numero_parcelas
+        
         conn = get_db()
         cur = conn.cursor()
         
-        # Criar cobrança(s)
-        if dados['tipo_cobranca'] == 'Parcelada' and dados['numero_parcelas'] > 1:
-            # Criar múltiplas cobranças para parcelamento
-            valor_parcela = dados['valor_original'] / dados['numero_parcelas']
-            data_base = datetime.strptime(dados['data_vencimento'], '%Y-%m-%d')
-            
-            for i in range(dados['numero_parcelas']):
-                data_venc = data_base + timedelta(days=30 * i)
-                # Calcular valor total da parcela com juros
-                valor_total_parcela = valor_parcela + (valor_parcela * dados['taxa_juros'] / 100)
-                
-                cur.execute('''
-                    INSERT INTO cobrancas (cliente_id, descricao, valor_original, taxa_juros, valor_total, data_vencimento, 
-                                         tipo_cobranca, numero_parcelas, parcela_atual)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
-                ''', (dados['cliente_id'], 
-                     f"{dados['descricao']} - Parcela {i+1}/{dados['numero_parcelas']}", 
-                     valor_parcela,
-                     dados['taxa_juros'],
-                     valor_total_parcela,
-                     data_venc.strftime('%Y-%m-%d'),
-                     'Parcelada',
-                     dados['numero_parcelas'],
-                     i+1))
-        else:
-            # Cobrança única
+        try:
+            # Criar a cobrança principal
             cur.execute('''
-                INSERT INTO cobrancas (cliente_id, descricao, valor_original, taxa_juros, valor_total, data_vencimento, tipo_cobranca)
-                VALUES (%s, %s, %s, %s, %s, %s, %s)
-            ''', (dados['cliente_id'], dados['descricao'], dados['valor_original'], 
-                 dados['taxa_juros'], dados['valor_devido'], dados['data_vencimento'], 'Única'))
+                INSERT INTO cobrancas (cliente_id, descricao, valor_original, taxa_juros, valor_total, data_vencimento, 
+                                     tipo_cobranca, numero_parcelas)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                RETURNING id
+            ''', (cliente_id, descricao, valor_emprestimo, taxa_juros, valor_devido_total, 
+                 data_primeira_parcela, 'Parcelada', numero_parcelas))
+            
+            nova_cobranca_id = cur.fetchone()[0]
+            
+            # Gerar as parcelas diárias
+            data_vencimento_atual = data_venc.date()
+            
+            for i in range(numero_parcelas):
+                # Pular domingos
+                while data_vencimento_atual.weekday() == 6:  # 6 = domingo
+                    data_vencimento_atual += timedelta(days=1)
+                
+                # Criar a parcela
+                cur.execute('''
+                    INSERT INTO parcelas (cobranca_id, numero_parcela, valor, data_vencimento, status)
+                    VALUES (%s, %s, %s, %s, %s)
+                ''', (nova_cobranca_id, i + 1, valor_parcela, data_vencimento_atual, 'Pendente'))
+                
+                # Incrementar para a próxima parcela (próximo dia)
+                data_vencimento_atual += timedelta(days=1)
+            
+            conn.commit()
+            flash(f'Cobrança criada com sucesso! {numero_parcelas} parcelas diárias foram geradas.', 'success')
+            
+        except Exception as e:
+            conn.rollback()
+            flash(f'Erro ao criar cobrança: {str(e)}', 'danger')
+        finally:
+            cur.close()
+            conn.close()
         
-        conn.commit()
-        cur.close()
-        conn.close()
-        flash('Cobrança(s) adicionada(s) com sucesso!', 'success')
         return redirect(url_for('index'))
     
     return render_template('cobranca_form.html', clientes=clientes, cobranca=None)
@@ -905,6 +956,80 @@ def pagar_cobranca(cobranca_id):
     conn.close()
     flash('Pagamento registrado com sucesso!', 'success')
     return redirect(url_for('index'))
+
+@app.route('/parcela/<int:parcela_id>/pagar', methods=['POST'])
+@login_required
+def pagar_parcela(parcela_id):
+    """Processa o pagamento de uma parcela individual."""
+    conn = get_db()
+    cur = conn.cursor(row_factory=dict_row)
+    
+    # Buscar parcela e cobrança relacionada
+    cur.execute('''
+        SELECT p.*, c.cliente_id, c.descricao as cobranca_descricao
+        FROM parcelas p
+        JOIN cobrancas c ON p.cobranca_id = c.id
+        WHERE p.id = %s
+    ''', (parcela_id,))
+    parcela = cur.fetchone()
+    
+    if not parcela:
+        flash('Parcela não encontrada.', 'danger')
+        cur.close()
+        conn.close()
+        return redirect(url_for('index'))
+    
+    # Obter dados do formulário
+    valor_pago = float(request.form.get('valor_pago', parcela['valor']))
+    forma_pagamento = request.form.get('forma_pagamento', 'Dinheiro')
+    observacoes = request.form.get('observacoes', '')
+    
+    # Verificar se o valor pago é suficiente
+    if valor_pago < parcela['valor']:
+        flash(f'Valor insuficiente. Valor da parcela: R$ {parcela["valor"]:.2f}', 'warning')
+        cur.close()
+        conn.close()
+        return redirect(url_for('visualizar_cliente', cliente_id=parcela['cliente_id']))
+    
+    try:
+        # Atualizar parcela
+        cur.execute('''
+            UPDATE parcelas 
+            SET status='Pago', valor_pago=%s, forma_pagamento=%s, 
+                data_pagamento=CURRENT_DATE, observacoes=%s, atualizado_em=CURRENT_TIMESTAMP
+            WHERE id=%s
+        ''', (valor_pago, forma_pagamento, observacoes, parcela_id))
+        
+        # Registrar no histórico de pagamentos
+        cur.execute('''
+            INSERT INTO historico_pagamentos (cobranca_id, cliente_id, valor_pago, forma_pagamento, observacoes, usuario_id)
+            VALUES (%s, %s, %s, %s, %s, %s)
+        ''', (parcela['cobranca_id'], parcela['cliente_id'], valor_pago, forma_pagamento, observacoes, session.get('usuario_id')))
+        
+        # Verificar se todas as parcelas da cobrança foram pagas
+        cur.execute('SELECT COUNT(*) as total, SUM(CASE WHEN status = \'Pago\' THEN 1 ELSE 0 END) as pagas FROM parcelas WHERE cobranca_id = %s', (parcela['cobranca_id'],))
+        status_parcelas = cur.fetchone()
+        
+        if status_parcelas['pagas'] == status_parcelas['total']:
+            # Todas as parcelas foram pagas, atualizar cobrança principal
+            cur.execute('''
+                UPDATE cobrancas 
+                SET status='Pago', valor_pago=valor_total, 
+                    data_pagamento=CURRENT_DATE, atualizado_em=CURRENT_TIMESTAMP
+                WHERE id=%s
+            ''', (parcela['cobranca_id'],))
+        
+        conn.commit()
+        flash('Pagamento da parcela registrado com sucesso!', 'success')
+        
+    except Exception as e:
+        conn.rollback()
+        flash(f'Erro ao processar pagamento: {str(e)}', 'danger')
+    finally:
+        cur.close()
+        conn.close()
+    
+    return redirect(url_for('visualizar_cliente', cliente_id=parcela['cliente_id']))
 
 @app.route('/cobrancas/editar/<int:id>', methods=['GET', 'POST'])
 @login_required
