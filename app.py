@@ -2,8 +2,9 @@
 
 import os
 import sys
-from flask import Flask, render_template, request, redirect, url_for, jsonify, flash, session, send_from_directory
-from flask_cors import CORS
+import io
+import csv
+from flask import Flask, render_template, request, redirect, url_for, flash, session, Response
 from datetime import datetime, timedelta, date
 from werkzeug.security import generate_password_hash, check_password_hash
 from functools import wraps
@@ -12,6 +13,9 @@ import re
 import psycopg
 from psycopg.rows import dict_row
 from psycopg.errors import UniqueViolation
+from openpyxl import Workbook
+from openpyxl.styles import Font, PatternFill
+from openpyxl.utils import get_column_letter
 
 # Carregar variáveis de ambiente do arquivo .env se existir
 try:
@@ -21,12 +25,10 @@ except ImportError:
     pass  # python-dotenv não está instalado, usar apenas variáveis de ambiente do sistema
 
 # Inicializa a aplicação Flask
-app = Flask(__name__, static_folder='build/static', static_url_path='/static')
+app = Flask(__name__)
 # Usa SECRET_KEY do ambiente em produção; gera uma chave temporária caso não definida
 app.secret_key = os.getenv('SECRET_KEY', secrets.token_hex(16))  # Chave secreta para sessões
 
-# Configuração de CORS
-CORS(app, origins=['http://localhost:3000', 'http://127.0.0.1:3000'])
 
 # --- Configuração e Inicialização do Banco de Dados ---
 DATABASE_URL = os.getenv('DATABASE_URL')
@@ -59,6 +61,7 @@ def init_db():
                 email TEXT UNIQUE NOT NULL,
                 senha TEXT NOT NULL,
                 tipo TEXT DEFAULT 'operador',
+                nivel TEXT DEFAULT 'Operador',
                 criado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         ''')
@@ -205,9 +208,10 @@ def init_db():
             cur.execute('ALTER TABLE clientes ADD COLUMN IF NOT EXISTS endereco_referencia TEXT')
             cur.execute('ALTER TABLE clientes ADD COLUMN IF NOT EXISTS chave_pix TEXT')
             cur.execute('ALTER TABLE clientes ADD COLUMN IF NOT EXISTS rg TEXT')
+            cur.execute('ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS nivel TEXT DEFAULT \'Operador\'')
             conn.commit()
         except Exception as e:
-            print(f"Aviso: Erro ao adicionar campos de referência: {e}")
+            print(f"Aviso: Erro ao adicionar campos de referência/nível: {e}")
 
         # Criar usuário admin padrão se não existir
         cur.execute('SELECT id FROM usuarios WHERE email = %s', ('admin@sistema.com',))
@@ -215,10 +219,15 @@ def init_db():
         if not admin_exists:
             admin_senha_hash = generate_password_hash('admin123')
             cur.execute(
-                'INSERT INTO usuarios (nome, email, senha, tipo) VALUES (%s, %s, %s, %s)',
-                ('Administrador', 'admin@sistema.com', admin_senha_hash, 'admin')
+                'INSERT INTO usuarios (nome, email, senha, tipo, nivel) VALUES (%s, %s, %s, %s, %s)',
+                ('Administrador', 'admin@sistema.com', admin_senha_hash, 'admin', 'ADM')
             )
             conn.commit()
+            
+        # Migrar usuários existentes para o novo sistema de níveis
+        cur.execute("UPDATE usuarios SET nivel='ADM' WHERE tipo='admin'")
+        cur.execute("UPDATE usuarios SET nivel='Operador' WHERE tipo='operador'")
+        conn.commit()
 
         cur.close()
         conn.close()
@@ -241,6 +250,48 @@ def admin_required(f):
             return redirect(url_for('login'))
         if session.get('usuario_tipo') != 'admin':
             flash('Acesso negado. Apenas administradores podem acessar esta página.', 'danger')
+            return redirect(url_for('index'))
+        return f(*args, **kwargs)
+    return decorated_function
+
+def gerente_required(f):
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if 'usuario_id' not in session:
+            flash('Por favor, faça login para acessar esta página.', 'critical')
+            return redirect(url_for('login'))
+        
+        # Buscar nível do usuário no banco de dados
+        conn = get_db()
+        cur = conn.cursor(row_factory=dict_row)
+        cur.execute('SELECT nivel FROM usuarios WHERE id = %s', (session['usuario_id'],))
+        usuario = cur.fetchone()
+        cur.close()
+        conn.close()
+        
+        if not usuario or usuario['nivel'] not in ['Gerente', 'ADM']:
+            flash('Acesso não autorizado.', 'danger')
+            return redirect(url_for('index'))
+        return f(*args, **kwargs)
+    return decorated_function
+
+def adm_required(f):
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if 'usuario_id' not in session:
+            flash('Por favor, faça login para acessar esta página.', 'warning')
+            return redirect(url_for('login'))
+        
+        # Buscar nível do usuário no banco de dados
+        conn = get_db()
+        cur = conn.cursor(row_factory=dict_row)
+        cur.execute('SELECT nivel FROM usuarios WHERE id = %s', (session['usuario_id'],))
+        usuario = cur.fetchone()
+        cur.close()
+        conn.close()
+        
+        if not usuario or usuario['nivel'] != 'ADM':
+            flash('Acesso não autorizado. Apenas administradores.', 'danger')
             return redirect(url_for('index'))
         return f(*args, **kwargs)
     return decorated_function
@@ -326,7 +377,11 @@ def login():
         if usuario and check_password_hash(usuario['senha'], senha):
             session['usuario_id'] = usuario['id']
             session['usuario_nome'] = usuario['nome']
-            session['usuario_tipo'] = usuario['tipo']
+            # Derive tipo from nivel
+            nivel = usuario.get('nivel', 'Operador')
+            tipo = 'admin' if nivel == 'ADM' else 'operador'
+            session['usuario_tipo'] = tipo
+            session['usuario_nivel'] = nivel
             flash(f'Bem-vindo, {usuario["nome"]}!', 'success')
             return redirect(url_for('index'))
         else:
@@ -388,11 +443,26 @@ def index():
     cobrancas = cur.fetchall()
     
     # Calcular valores atualizados para cada cobrança
+    hoje = date.today()
     cobrancas_atualizadas = []
     for cobranca in cobrancas:
         cobranca_dict = dict(cobranca)
-        valores = calcular_valor_atualizado(cobranca_dict)
-        cobranca_dict.update(valores)
+        cobranca_dict['valor_multa'] = 0
+        
+        # Só calcula multa se a cobrança não está paga
+        if hoje > cobranca_dict['data_vencimento'] and cobranca_dict['status'] != 'Pago':
+            dias_atraso = (hoje - cobranca_dict['data_vencimento']).days
+            cobranca_dict['valor_multa'] = dias_atraso * 40.00
+            cobranca_dict['dias_atraso'] = dias_atraso
+        else:
+            cobranca_dict['dias_atraso'] = 0
+
+        # A SOMA CORRETA: valor_original (que já inclui os juros) + valor_multa
+        cobranca_dict['total_a_pagar'] = cobranca_dict['valor_original'] + cobranca_dict['valor_multa']
+        
+        # Para compatibilidade com o template existente, usar total_a_pagar como valor_total
+        cobranca_dict['valor_total'] = cobranca_dict['total_a_pagar']
+        
         cobrancas_atualizadas.append(cobranca_dict)
     
     cur.close()
@@ -434,44 +504,7 @@ def listar_clientes():
     
     return render_template('clientes.html', clientes=clientes)
 
-@app.route('/api/clientes', methods=['GET'])
-@login_required
-def api_listar_clientes():
-    """API para listar todos os clientes em formato JSON."""
-    conn = get_db()
-    cur = conn.cursor(row_factory=dict_row)
-    cur.execute('''
-        SELECT 
-            c.*,
-            COALESCE(agg.total_cobrancas, 0) AS total_cobrancas,
-            COALESCE(agg.cobrancas_pendentes, 0) AS cobrancas_pendentes,
-            COALESCE(agg.valor_pendente, 0) AS valor_pendente
-        FROM clientes c
-        LEFT JOIN (
-            SELECT 
-                cliente_id,
-                COUNT(id) AS total_cobrancas,
-                SUM(CASE WHEN status = 'Pendente' THEN 1 ELSE 0 END) AS cobrancas_pendentes,
-                SUM(CASE WHEN status = 'Pendente' THEN valor_original ELSE 0 END) AS valor_pendente
-            FROM cobrancas
-            GROUP BY cliente_id
-        ) agg ON agg.cliente_id = c.id
-        ORDER BY c.nome ASC
-    ''')
-    clientes = cur.fetchall()
-    cur.close()
-    conn.close()
-    
-    # Converter para lista de dicionários
-    clientes_list = []
-    for cliente in clientes:
-        cliente_dict = dict(cliente)
-        # Converter valores decimais para float para serialização JSON
-        if cliente_dict.get('valor_pendente'):
-            cliente_dict['valor_pendente'] = float(cliente_dict['valor_pendente'])
-        clientes_list.append(cliente_dict)
-    
-    return jsonify(clientes_list)
+
 
 @app.route('/cliente/adicionar', methods=['GET', 'POST'])
 @login_required
@@ -620,10 +653,12 @@ def visualizar_cliente(cliente_id):
             cobranca_dict = dict(cobranca)
             cobranca_dict['valor_multa'] = 0
             
-            if hoje > cobranca_dict['data_vencimento']:
+            # Só calcula multa se a cobrança não está paga
+            if hoje > cobranca_dict['data_vencimento'] and cobranca_dict['status'] != 'Pago':
                 dias_atraso = (hoje - cobranca_dict['data_vencimento']).days
                 cobranca_dict['valor_multa'] = dias_atraso * 40.00
 
+            # A SOMA CORRETA: valor_original (que já inclui os juros) + valor_multa
             cobranca_dict['total_a_pagar'] = cobranca_dict['valor_original'] + cobranca_dict['valor_multa']
             
             # Adicionar parcelas se for cobrança parcelada
@@ -1109,7 +1144,7 @@ def editar_cobranca(id):
 # --- Rotas de Usuários ---
 @app.route('/usuarios')
 @login_required
-@admin_required
+@adm_required
 def listar_usuarios():
     """Lista todos os usuários do sistema."""
     conn = get_db()
@@ -1123,7 +1158,7 @@ def listar_usuarios():
 
 @app.route('/usuario/adicionar', methods=['GET', 'POST'])
 @login_required
-@admin_required
+@adm_required
 def adicionar_usuario():
     """Adiciona um novo usuário."""
     if request.method == 'POST':
@@ -1131,16 +1166,19 @@ def adicionar_usuario():
             'nome': request.form['nome'],
             'email': request.form['email'],
             'senha': request.form['senha'],
-            'tipo': request.form.get('tipo', 'operador')
+            'nivel': request.form.get('nivel', 'Operador')
         }
+        
+        # Automatically derive tipo from nivel
+        dados['tipo'] = 'admin' if dados['nivel'] == 'ADM' else 'operador'
         
         conn = get_db()
         cur = conn.cursor()
         try:
             senha_hash = generate_password_hash(dados['senha'])
             cur.execute(
-                'INSERT INTO usuarios (nome, email, senha, tipo) VALUES (%s, %s, %s, %s)',
-                (dados['nome'], dados['email'], senha_hash, dados['tipo'])
+                'INSERT INTO usuarios (nome, email, senha, tipo, nivel) VALUES (%s, %s, %s, %s, %s)',
+                (dados['nome'], dados['email'], senha_hash, dados['tipo'], dados['nivel'])
             )
             conn.commit()
             flash('Usuário adicionado com sucesso!', 'success')
@@ -1155,7 +1193,7 @@ def adicionar_usuario():
 
 @app.route('/usuario/<int:usuario_id>', methods=['GET', 'POST'])
 @login_required
-@admin_required
+@adm_required
 def editar_usuario(usuario_id):
     """Edita um usuário existente."""
     conn = get_db()
@@ -1173,20 +1211,23 @@ def editar_usuario(usuario_id):
         dados = {
             'nome': request.form['nome'],
             'email': request.form['email'],
-            'tipo': request.form.get('tipo', 'operador')
+            'nivel': request.form.get('nivel', 'Operador')
         }
+        
+        # Automatically derive tipo from nivel
+        dados['tipo'] = 'admin' if dados['nivel'] == 'ADM' else 'operador'
         
         # Se uma nova senha foi fornecida
         if request.form.get('senha'):
             dados['senha'] = generate_password_hash(request.form['senha'])
             cur.execute(
-                'UPDATE usuarios SET nome=%s, email=%s, senha=%s, tipo=%s WHERE id=%s',
-                (dados['nome'], dados['email'], dados['senha'], dados['tipo'], usuario_id)
+                'UPDATE usuarios SET nome=%s, email=%s, senha=%s, tipo=%s, nivel=%s WHERE id=%s',
+                (dados['nome'], dados['email'], dados['senha'], dados['tipo'], dados['nivel'], usuario_id)
             )
         else:
             cur.execute(
-                'UPDATE usuarios SET nome=%s, email=%s, tipo=%s WHERE id=%s',
-                (dados['nome'], dados['email'], dados['tipo'], usuario_id)
+                'UPDATE usuarios SET nome=%s, email=%s, tipo=%s, nivel=%s WHERE id=%s',
+                (dados['nome'], dados['email'], dados['tipo'], dados['nivel'], usuario_id)
             )
         
         conn.commit()
@@ -1199,42 +1240,35 @@ def editar_usuario(usuario_id):
     conn.close()
     return render_template('usuario_form.html', usuario=usuario)
 
-# --- Rotas de Configurações ---
-@app.route('/configuracoes', methods=['GET', 'POST'])
+@app.route('/usuario/<int:usuario_id>/deletar', methods=['POST'])
 @login_required
-@admin_required
-def configuracoes():
-    """Exibe e permite editar as configurações do sistema."""
+@adm_required
+def excluir_usuario(usuario_id):
+    """Exclui um usuário do sistema."""
     conn = get_db()
     cur = conn.cursor(row_factory=dict_row)
     
-    if request.method == 'POST':
-        # Atualizar configurações
-        configs = {
-            'taxa_juros_mensal': request.form.get('taxa_juros_mensal', '2.0'),
-            'taxa_multa': request.form.get('taxa_multa', '10.0'),
-            'dias_tolerancia': request.form.get('dias_tolerancia', '3'),
-            'envio_automatico': request.form.get('envio_automatico', 'false'),
-            'dias_aviso_vencimento': request.form.get('dias_aviso_vencimento', '3')
-        }
-        
-        for chave, valor in configs.items():
-            cur.execute(
-                'UPDATE configuracoes SET valor=%s WHERE chave=%s',
-                (valor, chave)
-            )
-        
+    # Verificar se o usuário existe
+    cur.execute('SELECT nome FROM usuarios WHERE id = %s', (usuario_id,))
+    usuario = cur.fetchone()
+    if not usuario:
+        flash('Usuário não encontrado.', 'danger')
+        cur.close()
+        conn.close()
+        return redirect(url_for('listar_usuarios'))
+    
+    try:
+        # Excluir usuário
+        cur.execute('DELETE FROM usuarios WHERE id = %s', (usuario_id,))
         conn.commit()
-        flash('Configurações atualizadas com sucesso!', 'success')
+        flash(f'Usuário "{usuario["nome"]}" foi excluído com sucesso!', 'success')
+    except Exception as e:
+        flash(f'Erro ao excluir usuário: {str(e)}', 'danger')
+    finally:
+        cur.close()
+        conn.close()
     
-    # Buscar configurações atuais
-    cur.execute('SELECT chave, valor, descricao FROM configuracoes ORDER BY chave')
-    configs = cur.fetchall()
-    cur.close()
-    conn.close()
-    
-    return render_template('configuracoes.html', configs=configs)
-
+    return redirect(url_for('listar_usuarios'))
 
 # --- Rotas do Calendário ---
 @app.route('/calendario')
@@ -1243,238 +1277,206 @@ def calendario():
     """Renderiza a página do calendário."""
     return render_template('calendario.html')
 
-@app.route('/api/calendario/eventos')
-@login_required
-def api_calendario_eventos():
-    """API para buscar eventos do calendário."""
-    conn = get_db()
-    cur = conn.cursor(row_factory=dict_row)
-    
-    # Buscar todas as cobranças com informações do cliente
-    cur.execute('''
-        SELECT 
-            co.id,
-            co.descricao,
-            co.valor_original,
-            co.valor_pago,
-            co.data_vencimento,
-            co.data_pagamento,
-            co.status,
-            co.numero_parcelas,
-            co.parcela_atual,
-            co.tipo_cobranca,
-            c.nome as cliente_nome,
-            c.telefone,
-            c.email
-        FROM cobrancas co
-        JOIN clientes c ON co.cliente_id = c.id
-        ORDER BY co.data_vencimento ASC
-    ''')
-    
-    cobrancas = cur.fetchall()
-    
-    # Converter para formato de eventos do calendário
-    eventos = []
-    for cobranca in cobrancas:
-        # Calcular valores atualizados
-        valores = calcular_valor_atualizado(dict(cobranca))
-        
-        # Determinar cor baseada no status
-        if cobranca['status'] == 'Pago':
-            cor = '#28a745'  # Verde
-        elif cobranca['status'] == 'Pendente':
-            if valores['dias_atraso'] > 0:
-                cor = '#dc3545'  # Vermelho (vencida)
-            else:
-                cor = '#007bff'  # Azul (a pagar)
-        else:
-            cor = '#6c757d'  # Cinza (cancelada)
-        
-        evento = {
-            'id': cobranca['id'],
-            'title': f"{cobranca['cliente_nome']} - R$ {valores['valor_total']:.2f}",
-            'start': cobranca['data_vencimento'].strftime('%Y-%m-%d'),
-            'backgroundColor': cor,
-            'borderColor': cor,
-            'textColor': '#ffffff',
-            'extendedProps': {
-                'cliente_nome': cobranca['cliente_nome'],
-                'cliente_telefone': cobranca['telefone'],
-                'cliente_email': cobranca['email'],
-                'descricao': cobranca['descricao'],
-                'valor_original': float(cobranca['valor_original']),
-                'valor_pago': float(cobranca['valor_pago']) if cobranca['valor_pago'] else 0,
-                'valor_total': valores['valor_total'],
-                'multa': valores['multa'],
-                'juros': valores['juros'],
-                'dias_atraso': valores['dias_atraso'],
-                'status': cobranca['status'],
-                'numero_parcelas': cobranca['numero_parcelas'],
-                'parcela_atual': cobranca['parcela_atual'],
-                'tipo_cobranca': cobranca['tipo_cobranca'],
-                'data_pagamento': cobranca['data_pagamento'].strftime('%Y-%m-%d') if cobranca['data_pagamento'] else None
-            }
-        }
-        eventos.append(evento)
-    
-    cur.close()
-    conn.close()
-    
-    return jsonify(eventos)
 
-@app.route('/api/calendario/estatisticas')
-@login_required
-def api_calendario_estatisticas():
-    """API para buscar estatísticas do calendário."""
-    conn = get_db()
-    cur = conn.cursor(row_factory=dict_row)
-    
-    # Estatísticas gerais
-    cur.execute("SELECT COUNT(*) as count FROM cobrancas WHERE status = 'Pago'")
-    total_pagas = cur.fetchone()['count']
-    
-    cur.execute("SELECT COUNT(*) as count FROM cobrancas WHERE status = 'Pendente' AND data_vencimento >= CURRENT_DATE")
-    total_a_pagar = cur.fetchone()['count']
-    
-    cur.execute("SELECT COUNT(*) as count FROM cobrancas WHERE status = 'Pendente' AND data_vencimento < CURRENT_DATE")
-    total_vencidas = cur.fetchone()['count']
-    
-    cur.execute("SELECT COUNT(*) as count FROM cobrancas WHERE status = 'Cancelada'")
-    total_canceladas = cur.fetchone()['count']
-    
-    # Valores totais
-    cur.execute("SELECT COALESCE(SUM(valor_original), 0) as total FROM cobrancas WHERE status = 'Pago'")
-    valor_total_pagas = cur.fetchone()['total']
-    
-    cur.execute("SELECT COALESCE(SUM(valor_original), 0) as total FROM cobrancas WHERE status = 'Pendente' AND data_vencimento >= CURRENT_DATE")
-    valor_total_a_pagar = cur.fetchone()['total']
-    
-    cur.execute("SELECT COALESCE(SUM(valor_original), 0) as total FROM cobrancas WHERE status = 'Pendente' AND data_vencimento < CURRENT_DATE")
-    valor_total_vencidas = cur.fetchone()['total']
-    
-    # Próximos vencimentos (próximos 7 dias)
-    cur.execute('''
-        SELECT 
-            co.id,
-            co.descricao,
-            co.valor_original,
-            co.data_vencimento,
-            c.nome as cliente_nome,
-            c.telefone
-        FROM cobrancas co
-        JOIN clientes c ON co.cliente_id = c.id
-        WHERE co.status = 'Pendente' 
-        AND co.data_vencimento BETWEEN CURRENT_DATE AND CURRENT_DATE + INTERVAL '7 days'
-        ORDER BY co.data_vencimento ASC
-        LIMIT 10
-    ''')
-    proximos_vencimentos = cur.fetchall()
-    
-    cur.close()
-    conn.close()
-    
-    estatisticas = {
-        'contadores': {
-            'pagas': total_pagas,
-            'a_pagar': total_a_pagar,
-            'vencidas': total_vencidas,
-            'canceladas': total_canceladas
-        },
-        'valores': {
-            'pagas': float(valor_total_pagas),
-            'a_pagar': float(valor_total_a_pagar),
-            'vencidas': float(valor_total_vencidas)
-        },
-        'proximos_vencimentos': [
-            {
-                'id': v['id'],
-                'cliente_nome': v['cliente_nome'],
-                'descricao': v['descricao'],
-                'valor': float(v['valor_original']),
-                'data_vencimento': v['data_vencimento'].strftime('%Y-%m-%d'),
-                'telefone': v['telefone']
-            }
-            for v in proximos_vencimentos
-        ]
-    }
-    
-    return jsonify(estatisticas)
 
-@app.route('/api/calendario/pagar/<int:cobranca_id>', methods=['POST'])
+
+
+
+
+# --- Rotas de Relatórios ---
+@app.route('/relatorios')
 @login_required
-def api_calendario_pagar(cobranca_id):
-    """API para processar pagamento via calendário."""
-    conn = get_db()
-    cur = conn.cursor(row_factory=dict_row)
-    
-    # Buscar cobrança
-    cur.execute('SELECT * FROM cobrancas WHERE id = %s', (cobranca_id,))
-    cobranca = cur.fetchone()
-    if not cobranca:
-        cur.close()
-        conn.close()
-        return jsonify({'success': False, 'message': 'Cobrança não encontrada'}), 404
-    
-    # Obter dados do formulário
-    data = request.get_json()
-    valor_pago = float(data.get('valor_pago', cobranca['valor_original']))
-    forma_pagamento = data.get('forma_pagamento', 'Dinheiro')
-    observacoes = data.get('observacoes', '')
-    
-    # Calcular valores atualizados
-    valores = calcular_valor_atualizado(dict(cobranca))
-    valor_total = valores['valor_total']
-    
-    # Verificar se o valor pago é suficiente
-    if valor_pago < valor_total:
-        cur.close()
-        conn.close()
-        return jsonify({
-            'success': False, 
-            'message': f'Valor insuficiente. Valor total: R$ {valor_total:.2f}'
-        }), 400
-    
+@gerente_required
+def relatorios():
+    """Página principal de relatórios."""
+    return render_template('relatorios.html')
+
+
+
+
+
+@app.route('/relatorios/clientes', methods=['GET', 'POST'])
+@login_required
+@gerente_required
+def gerar_relatorio_clientes():
+    """Gera relatório de clientes em Excel."""
     try:
-        # Atualizar cobrança
-        cur.execute('''
-            UPDATE cobrancas 
-            SET status='Pago', valor_pago=%s, forma_pagamento=%s, 
-                data_pagamento=CURRENT_DATE, atualizado_em=CURRENT_TIMESTAMP
-            WHERE id=%s
-        ''', (valor_pago, forma_pagamento, cobranca_id))
+        conn = get_db()
+        cur = conn.cursor(row_factory=dict_row)
         
-        # Registrar no histórico de pagamentos
+        # Buscar todos os clientes
         cur.execute('''
-            INSERT INTO historico_pagamentos (cobranca_id, cliente_id, valor_pago, forma_pagamento, observacoes, usuario_id)
-            VALUES (%s, %s, %s, %s, %s, %s)
-        ''', (cobranca_id, cobranca['cliente_id'], valor_pago, forma_pagamento, observacoes, session.get('usuario_id')))
+            SELECT 
+                c.id,
+                c.nome,
+                c.cpf_cnpj,
+                c.telefone,
+                c.email,
+                c.cidade,
+                c.criado_em
+            FROM clientes c
+            ORDER BY c.nome
+        ''')
+        clientes = cur.fetchall()
         
-        conn.commit()
         cur.close()
         conn.close()
         
-        return jsonify({'success': True, 'message': 'Pagamento registrado com sucesso!'})
+        # Criar workbook Excel
+        wb = Workbook()
+        ws = wb.active
+        ws.title = "Relatório de Clientes"
+
+        # --- Estilo do Cabeçalho ---
+        header_font = Font(bold=True, color="FFFFFF")
+        header_fill = PatternFill(start_color="4F81BD", end_color="4F81BD", fill_type="solid")
+
+        # --- Escreve o Cabeçalho ---
+        headers = ['ID', 'Nome', 'CPF/CNPJ', 'Telefone', 'Email', 'Cidade', 'Data de Cadastro']
+        ws.append(headers)
+
+        for col_num, header in enumerate(headers, 1):
+            cell = ws.cell(row=1, column=col_num)
+            cell.font = header_font
+            cell.fill = header_fill
+
+        # --- Escreve os Dados dos Clientes ---
+        for cliente in clientes:
+            ws.append([
+                cliente['id'],
+                cliente['nome'],
+                cliente['cpf_cnpj'],
+                cliente['telefone'],
+                cliente['email'] or 'N/A',
+                cliente['cidade'],
+                cliente['criado_em'].strftime('%d/%m/%Y') if cliente['criado_em'] else 'N/A'
+            ])
+
+        # --- Autoajuste da Largura das Colunas ---
+        for col_num, _ in enumerate(headers, 1):
+            column_letter = get_column_letter(col_num)
+            ws.column_dimensions[column_letter].auto_size = True
+
+        # --- Salva em Memória e Envia como Resposta ---
+        output = io.BytesIO()
+        wb.save(output)
+        output.seek(0)
+
+        return Response(
+            output,
+            mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            headers={"Content-Disposition": "attachment;filename=relatorio_clientes.xlsx"}
+        )
         
     except Exception as e:
-        conn.rollback()
+        flash(f'Erro ao gerar relatório: {str(e)}', 'danger')
+        return redirect(url_for('relatorios'))
+
+@app.route('/relatorios/cobrancas', methods=['GET', 'POST'])
+@login_required
+@gerente_required
+def gerar_relatorio_cobrancas():
+    """Gera relatório de cobranças em Excel."""
+    try:
+        conn = get_db()
+        cur = conn.cursor(row_factory=dict_row)
+        
+        # Buscar todas as cobranças com dados do cliente
+        cur.execute('''
+            SELECT 
+                c.id,
+                cl.nome,
+                c.valor_original,
+                c.valor_total,
+                c.data_vencimento,
+                c.status,
+                c.data_pagamento
+            FROM cobrancas c
+            JOIN clientes cl ON c.cliente_id = cl.id
+            ORDER BY c.criado_em DESC
+        ''')
+        cobrancas = cur.fetchall()
+        
         cur.close()
         conn.close()
-        return jsonify({'success': False, 'message': f'Erro ao processar pagamento: {str(e)}'}), 500
+        
+        # Criar workbook Excel
+        wb = Workbook()
+        ws = wb.active
+        ws.title = "Relatório de Cobranças"
 
+        # --- Estilo do Cabeçalho ---
+        header_font = Font(bold=True, color="FFFFFF")
+        header_fill = PatternFill(start_color="C0504D", end_color="C0504D", fill_type="solid")
 
-# --- Rota "Catch-All" para servir a aplicação React ---
-# Esta rota garante que qualquer URL que não seja uma rota de API 
-# seja gerenciada pelo React, permitindo o roteamento no lado do cliente.
-# IMPORTANTE: Esta rota deve ficar por último para não interceptar as rotas de API
-@app.route('/', defaults={'path': ''})
-@app.route('/<path:path>')
-@login_required # Garante que o usuário esteja logado para carregar o app
-def serve(path):
-    if path != "" and os.path.exists(os.path.join(app.static_folder, '..', path)):
-        return send_from_directory(os.path.join(app.static_folder, '..'), path)
-    else:
-        return send_from_directory(os.path.join(app.static_folder, '..'), 'index.html')
+        # --- Escreve o Cabeçalho ---
+        headers = ['ID Cobrança', 'Nome Cliente', 'Valor Original', 'Valor Devido', 'Data Vencimento', 'Status Pagamento']
+        ws.append(headers)
 
+        for col_num, header in enumerate(headers, 1):
+            cell = ws.cell(row=1, column=col_num)
+            cell.font = header_font
+            cell.fill = header_fill
+
+        # --- Escreve os Dados das Cobranças ---
+        for cobranca in cobrancas:
+            # Determinar valor devido (valor_total se não pago, valor atualizado se pago)
+            if cobranca['status'] == 'Paga' and cobranca['data_pagamento']:
+                valor_devido = f"R$ 0,00"  # Já foi pago
+                status_pagamento = 'Pago'
+            else:
+                valor_devido = f"R$ {cobranca['valor_total']:.2f}".replace('.', ',') if cobranca['valor_total'] else 'R$ 0,00'
+                status_pagamento = 'Pendente'
+
+            ws.append([
+                cobranca['id'],
+                cobranca['nome'],
+                f"R$ {cobranca['valor_original']:.2f}".replace('.', ','),
+                valor_devido,
+                cobranca['data_vencimento'].strftime('%d/%m/%Y') if cobranca['data_vencimento'] else 'N/A',
+                status_pagamento
+            ])
+
+        # --- Autoajuste da Largura das Colunas ---
+        for col_num, _ in enumerate(headers, 1):
+            column_letter = get_column_letter(col_num)
+            ws.column_dimensions[column_letter].auto_size = True
+
+        # --- Salva em Memória e Envia como Resposta ---
+        output = io.BytesIO()
+        wb.save(output)
+        output.seek(0)
+
+        return Response(
+            output,
+            mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            headers={"Content-Disposition": "attachment;filename=relatorio_cobrancas.xlsx"}
+        )
+        
+    except Exception as e:
+        flash(f'Erro ao gerar relatório: {str(e)}', 'danger')
+        return redirect(url_for('relatorios'))
+
+# --- Funções para Templates ---
+@app.context_processor
+def utility_processor():
+    def get_user_nivel():
+        """Retorna o nível do usuário logado."""
+        return session.get('usuario_nivel', 'Operador')
+    
+    def can_access_reports():
+        """Verifica se o usuário pode acessar relatórios."""
+        return session.get('usuario_nivel') in ['Gerente', 'ADM']
+    
+    def can_access_admin():
+        """Verifica se o usuário pode acessar funcionalidades administrativas."""
+        return session.get('usuario_nivel') == 'ADM'
+    
+    return dict(
+        get_user_nivel=get_user_nivel,
+        can_access_reports=can_access_reports,
+        can_access_admin=can_access_admin
+    )
 
 # --- Execução da Aplicação ---
 if __name__ == '__main__':

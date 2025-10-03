@@ -161,55 +161,24 @@
             </div>
             <hr>
             <ul class="nav nav-pills flex-column mb-auto">
-                <li class="nav-item">
-                    <a href="{{ url_for('index') }}" class="nav-link {{ 'active' if request.endpoint == 'index' }}">
-                        <i class="fas fa-tachometer-alt"></i>
-                        Dashboard
-                    </a>
-                </li>
-                <li class="nav-item">
-                    <a href="{{ url_for('listar_clientes') }}" class="nav-link {{ 'active' if request.endpoint in ['listar_clientes', 'adicionar_cliente', 'visualizar_cliente', 'editar_cliente'] }}">
-                        <i class="fas fa-users"></i>
-                        Clientes
-                    </a>
-                </li>
-                <li class="nav-item">
-                    <a href="{{ url_for('adicionar_cobranca') }}" class="nav-link {{ 'active' if request.endpoint == 'adicionar_cobranca' }}">
-                        <i class="fas fa-file-invoice-dollar"></i>
-                        Nova Cobrança
-                    </a>
-                </li>
-                <li class="nav-item">
-                    <a href="{{ url_for('listar_dividas') }}" class="nav-link {{ 'active' if request.endpoint in ['listar_dividas', 'adicionar_divida', 'editar_divida'] }}">
-                        <i class="fas fa-exclamation-triangle"></i>
-                        Dívidas
-                    </a>
-                </li>
-                <li class="nav-item">
-                    <a href="{{ url_for('dashboard_parcelas') }}" class="nav-link {{ 'active' if request.endpoint == 'dashboard_parcelas' }}">
-                        <i class="fas fa-chart-pie"></i>
-                        Gráfico Parcelas
-                    </a>
-                </li>
-                <li class="nav-item">
-                    <a href="{{ url_for('calendario') }}" class="nav-link {{ 'active' if request.endpoint == 'calendario' }}">
-                        <i class="fas fa-calendar-alt"></i>
-                        Calendário
-                    </a>
-                </li>
-                {% if session.get('usuario_tipo') == 'admin' %}
-                <li class="nav-item">
-                    <a href="{{ url_for('listar_usuarios') }}" class="nav-link {{ 'active' if request.endpoint in ['listar_usuarios', 'adicionar_usuario', 'editar_usuario'] }}">
-                        <i class="fas fa-user-cog"></i>
-                        Usuários
-                    </a>
-                </li>
-                <li class="nav-item">
-                    <a href="{{ url_for('configuracoes') }}" class="nav-link {{ 'active' if request.endpoint == 'configuracoes' }}">
-                        <i class="fas fa-cog"></i>
-                        Configurações
-                    </a>
-                </li>
+                <li class="nav-item"><a class="nav-link" href="{{ url_for('index') }}">
+                    <i class="fas fa-home"></i>Início
+                </a></li>
+                <li class="nav-item"><a class="nav-link" href="{{ url_for('listar_clientes') }}">
+                    <i class="fas fa-users"></i>Clientes
+                </a></li>
+                <li class="nav-item"><a class="nav-link" href="{{ url_for('calendario') }}">
+                    <i class="fas fa-calendar-alt"></i>Calendário
+                </a></li>
+                {% if session.get('usuario_nivel') in ['Gerente', 'ADM'] %}
+                <li class="nav-item"><a class="nav-link" href="{{ url_for('relatorios') }}">
+                    <i class="fas fa-chart-bar"></i>Relatórios
+                </a></li>
+                {% endif %}
+                {% if session.get('usuario_nivel') == 'ADM' %}
+                <li class="nav-item"><a class="nav-link" href="{{ url_for('listar_usuarios') }}">
+                    <i class="fas fa-user-cog"></i>Usuários
+                </a></li>
                 {% endif %}
             </ul>
             <hr>

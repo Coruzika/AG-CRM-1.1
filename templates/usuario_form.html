@@ -220,14 +220,15 @@
                     <div class="error-message" id="confirmar_senha-error"></div>
                 </div>
 
+
                 <div class="form-group">
-                    <label for="tipo">Tipo de Usuário <span class="required">*</span></label>
-                    <select id="tipo" name="tipo" required>
-                        <option value="">Selecione...</option>
-                        <option value="admin" {% if usuario and usuario.tipo == 'admin' %}selected{% endif %}>Administrador</option>
-                        <option value="operador" {% if usuario and usuario.tipo == 'operador' %}selected{% endif %}>Operador</option>
+                    <label for="nivel">Nível de Acesso <span class="required">*</span></label>
+                    <select id="nivel" name="nivel" required>
+                        <option value="Operador" {% if usuario and usuario.nivel == 'Operador' %}selected{% endif %}>Operador</option>
+                        <option value="Gerente" {% if usuario and usuario.nivel == 'Gerente' %}selected{% endif %}>Gerente</option>
+                        <option value="ADM" {% if usuario and usuario.nivel == 'ADM' %}selected{% endif %}>ADM</option>
                     </select>
-                    <div class="error-message" id="tipo-error"></div>
+                    <div class="error-message" id="nivel-error"></div>
                 </div>
 
                 <div class="form-actions">
@@ -291,11 +292,6 @@
                 isValid = false;
             }
 
-            const tipo = document.getElementById('tipo').value;
-            if (!tipo) {
-                errors.tipo = 'Tipo de usuário é obrigatório';
-                isValid = false;
-            }
 
             // Show errors
             Object.keys(errors).forEach(field => {

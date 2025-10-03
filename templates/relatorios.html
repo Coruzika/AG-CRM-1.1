@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+
+{% block title %}Extração de Relatórios{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <h1 class="mb-4">Central de Extração de Relatórios</h1>
+
+    <div class="row">
+        <div class="col-md-6 mb-4">
+            <div class="card h-100">
+                <div class="card-body d-flex flex-column">
+                    <h5 class="card-title">Relatório de Clientes</h5>
+                    <p class="card-text">Exporte uma lista completa de todos os clientes cadastrados no sistema, incluindo dados pessoais e de contato.</p>
+                    <a href="{{ url_for('gerar_relatorio_clientes') }}" class="btn btn-primary mt-auto">
+                        <i class="fas fa-users mr-2"></i>Exportar Clientes (.xlsx)
+                    </a>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-6 mb-4">
+            <div class="card h-100">
+                <div class="card-body d-flex flex-column">
+                    <h5 class="card-title">Relatório de Cobranças</h5>
+                    <p class="card-text">Exporte uma lista completa de todas as cobranças, incluindo valores, datas de vencimento e status de pagamento.</p>
+                    <a href="{{ url_for('gerar_relatorio_cobrancas') }}" class="btn btn-info mt-auto">
+                        <i class="fas fa-file-invoice-dollar mr-2"></i>Exportar Cobranças (.xlsx)
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -135,6 +135,21 @@
             color: #2c5282;
         }
 
+        .badge.nivel-operador {
+            background: #bee3f8;
+            color: #2c5282;
+        }
+
+        .badge.nivel-gerente {
+            background: #c6f6d5;
+            color: #22543d;
+        }
+
+        .badge.nivel-adm {
+            background: #fed7d7;
+            color: #c53030;
+        }
+
         .table-actions {
             display: flex;
             gap: 5px;
@@ -227,6 +242,7 @@
                         <th>Nome</th>
                         <th>E-mail</th>
                         <th>Tipo</th>
+                        <th>Nível</th>
                         <th>Data de Criação</th>
                         <th>Ações</th>
                     </tr>
@@ -237,13 +253,19 @@
                         <td><strong>{{ usuario.nome }}</strong></td>
                         <td>{{ usuario.email }}</td>
                         <td>
-                            <span class="badge {{ usuario.tipo }}">
-                                {{ 'Administrador' if usuario.tipo == 'admin' else 'Operador' }}
+                            {% set tipo = 'admin' if usuario.nivel == 'ADM' else 'operador' %}
+                            <span class="badge {{ tipo }}">
+                                {{ 'Administrador' if tipo == 'admin' else 'Operador' }}
+                            </span>
+                        </td>
+                        <td>
+                            <span class="badge nivel-{{ usuario.nivel.lower() }}">
+                                {{ usuario.nivel }}
                             </span>
                         </td>
                         <td>
                             {% if usuario.criado_em %}
-                                {{ usuario.criado_em.split(' ')[0].split('-')[2] }}/{{ usuario.criado_em.split(' ')[0].split('-')[1] }}/{{ usuario.criado_em.split(' ')[0].split('-')[0] }}
+                                {{ usuario.criado_em.strftime('%d/%m/%Y') }}
                             {% else %}
                                 -
                             {% endif %}
@@ -276,7 +298,7 @@
                 // Create form to delete usuario
                 const form = document.createElement('form');
                 form.method = 'POST';
-                form.action = `/admin/usuario/${usuarioId}/deletar`;
+                form.action = `/usuario/${usuarioId}/deletar`;
                 
                 // Add CSRF token if needed
                 const csrfToken = document.querySelector('meta[name="csrf-token"]');
