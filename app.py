@@ -4,7 +4,7 @@ import os
 import sys
 import io
 import csv
-from flask import Flask, render_template, request, redirect, url_for, flash, session, Response
+from flask import Flask, render_template, request, redirect, url_for, flash, session, Response, jsonify
 from datetime import datetime, timedelta, date
 from werkzeug.security import generate_password_hash, check_password_hash
 from functools import wraps
@@ -1276,6 +1276,37 @@ def excluir_usuario(usuario_id):
 def calendario():
     """Renderiza a página do calendário."""
     return render_template('calendario.html')
+
+@app.route('/api/eventos')
+@login_required
+def api_eventos():
+    """API para buscar eventos do calendário."""
+    # Filtra apenas cobranças com data de vencimento não nula
+    conn = get_db()
+    cur = conn.cursor(row_factory=dict_row)
+    
+    cur.execute('''
+        SELECT c.*, cl.nome as cliente_nome, cl.telefone as cliente_telefone, cl.email as cliente_email
+        FROM cobrancas c
+        JOIN clientes cl ON c.cliente_id = cl.id
+        WHERE c.data_vencimento IS NOT NULL
+        ORDER BY c.data_vencimento ASC
+    ''')
+    cobrancas = cur.fetchall()
+    cur.close()
+    conn.close()
+    
+    eventos = []
+    for cobranca in cobrancas:
+        # Garante que o cliente existe para evitar erros
+        if cobranca['cliente_nome']:
+            eventos.append({
+                'title': f"{cobranca['cliente_nome']} - R$ {cobranca['valor_original']:.2f}",
+                'start': cobranca['data_vencimento'].isoformat(),
+                'url': url_for('visualizar_cliente', cliente_id=cobranca['cliente_id'])
+            })
+    
+    return jsonify(eventos)
 
 
 

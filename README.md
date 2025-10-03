@@ -1,4 +1,4 @@
-# CRM - Sistema de Cobrança
+# FinanFlow
 
 Sistema de gestão de cobranças com Flask e PostgreSQL.
 

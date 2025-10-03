@@ -5,9 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Calendário de Vencimentos - AG CRM</title>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
-    <link href="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.10/index.global.min.css" rel="stylesheet">
-    <script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.10/index.global.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.10/locales/pt-br.global.min.js"></script>
+    <link href="https://cdn.jsdelivr.net/npm/fullcalendar@5.11.3/main.min.css" rel="stylesheet">
     <style>
         * {
             margin: 0;
@@ -402,14 +400,6 @@
         </div>
         
         <div class="content">
-            <!-- Estatísticas -->
-            <div class="stats-grid" id="stats-grid">
-                <div class="loading">
-                    <i class="fas fa-spinner"></i>
-                    <p>Carregando estatísticas...</p>
-                </div>
-            </div>
-            
             <!-- Legenda -->
             <div class="legend">
                 <div class="legend-item">
@@ -434,419 +424,48 @@
             <div class="calendar-container">
                 <div id="calendar"></div>
             </div>
-            
-            <!-- Próximos Vencimentos -->
-            <div class="proximos-vencimentos" id="proximos-vencimentos">
-                <h3><i class="fas fa-clock"></i> Próximos Vencimentos (7 dias)</h3>
-                <div class="loading">
-                    <i class="fas fa-spinner"></i>
-                    <p>Carregando próximos vencimentos...</p>
-                </div>
-            </div>
         </div>
     </div>
     
-    <!-- Modal para detalhes da cobrança -->
-    <div id="cobrancaModal" class="modal">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h2 class="modal-title">Detalhes da Cobrança</h2>
-                <span class="close" onclick="fecharModal()">&times;</span>
-            </div>
-            <div id="modalBody">
-                <!-- Conteúdo será preenchido dinamicamente -->
-            </div>
-        </div>
-    </div>
-    
-    <!-- Modal para pagamento -->
-    <div id="pagamentoModal" class="modal">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h2 class="modal-title">Registrar Pagamento</h2>
-                <span class="close" onclick="fecharModalPagamento()">&times;</span>
-            </div>
-            <div id="pagamentoBody">
-                <!-- Conteúdo será preenchido dinamicamente -->
-            </div>
-        </div>
-    </div>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/moment.js/2.29.1/moment.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/fullcalendar@5.11.3/main.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/fullcalendar@5.11.3/locales/pt-br.js"></script>
 
     <script>
-        let calendar;
-        let eventos = [];
-        let estatisticas = {};
-        let cobrancaSelecionada = null;
-        
-        // Inicializar calendário
         document.addEventListener('DOMContentLoaded', function() {
-            inicializarCalendario();
-            carregarEstatisticas();
-            carregarProximosVencimentos();
-        });
-        
-        function inicializarCalendario() {
-            const calendarEl = document.getElementById('calendar');
-            
-            calendar = new FullCalendar.Calendar(calendarEl, {
-                locale: 'pt-br',
+            var calendarEl = document.getElementById('calendar');
+            var calendar = new FullCalendar.Calendar(calendarEl, {
+                locale: 'pt-br', // Define o idioma para Português do Brasil
                 initialView: 'dayGridMonth',
                 headerToolbar: {
                     left: 'prev,next today',
                     center: 'title',
-                    right: 'dayGridMonth,dayGridWeek,timeGridDay'
+                    right: 'dayGridMonth,timeGridWeek,timeGridDay'
                 },
-                buttonText: {
-                    today: 'Hoje',
-                    month: 'Mês',
-                    week: 'Semana',
-                    day: 'Dia'
+                events: {
+                    url: "{{ url_for('api_eventos') }}",
+                    failure: function() {
+                        alert('Houve um erro ao carregar os eventos do calendário!');
+                    }
                 },
-                dayHeaderFormat: {
-                    weekday: 'short'
-                },
-                events: function(info, successCallback, failureCallback) {
-                    carregarEventos(successCallback, failureCallback);
+                loading: function(isLoading) {
+                    if (isLoading) {
+                        // Pode adicionar um spinner ou uma mensagem de carregamento aqui se desejar
+                        console.log('A carregar eventos...');
+                    } else {
+                        console.log('Eventos carregados.');
+                    }
                 },
                 eventClick: function(info) {
-                    mostrarDetalhesCobranca(info.event);
-                },
-                eventDisplay: 'block',
-                dayMaxEvents: 3,
-                moreLinkClick: 'popover',
-                height: 'auto'
-            });
-            
-            calendar.render();
-        }
-        
-        function carregarEventos(successCallback, failureCallback) {
-            fetch('/api/calendario/eventos')
-                .then(response => response.json())
-                .then(data => {
-                    eventos = data;
-                    successCallback(data);
-                })
-                .catch(error => {
-                    console.error('Erro ao carregar eventos:', error);
-                    failureCallback(error);
-                });
-        }
-        
-        function carregarEstatisticas() {
-            fetch('/api/calendario/estatisticas')
-                .then(response => response.json())
-                .then(data => {
-                    estatisticas = data;
-                    renderizarEstatisticas();
-                })
-                .catch(error => {
-                    console.error('Erro ao carregar estatísticas:', error);
-                });
-        }
-        
-        function renderizarEstatisticas() {
-            const statsGrid = document.getElementById('stats-grid');
-            
-            statsGrid.innerHTML = `
-                <div class="stat-card pagas">
-                    <div class="stat-number">${estatisticas.contadores.pagas}</div>
-                    <div class="stat-label">Pagas</div>
-                    <div class="stat-value">R$ ${estatisticas.valores.pagas.toLocaleString('pt-BR', {minimumFractionDigits: 2})}</div>
-                </div>
-                <div class="stat-card vencidas">
-                    <div class="stat-number">${estatisticas.contadores.vencidas}</div>
-                    <div class="stat-label">Vencidas</div>
-                    <div class="stat-value">R$ ${estatisticas.valores.vencidas.toLocaleString('pt-BR', {minimumFractionDigits: 2})}</div>
-                </div>
-                <div class="stat-card a-pagar">
-                    <div class="stat-number">${estatisticas.contadores.a_pagar}</div>
-                    <div class="stat-label">A Pagar</div>
-                    <div class="stat-value">R$ ${estatisticas.valores.a_pagar.toLocaleString('pt-BR', {minimumFractionDigits: 2})}</div>
-                </div>
-                <div class="stat-card canceladas">
-                    <div class="stat-number">${estatisticas.contadores.canceladas}</div>
-                    <div class="stat-label">Canceladas</div>
-                    <div class="stat-value">-</div>
-                </div>
-            `;
-        }
-        
-        function carregarProximosVencimentos() {
-            fetch('/api/calendario/estatisticas')
-                .then(response => response.json())
-                .then(data => {
-                    renderizarProximosVencimentos(data.proximos_vencimentos);
-                })
-                .catch(error => {
-                    console.error('Erro ao carregar próximos vencimentos:', error);
-                });
-        }
-        
-        function renderizarProximosVencimentos(vencimentos) {
-            const container = document.getElementById('proximos-vencimentos');
-            
-            if (vencimentos.length === 0) {
-                container.innerHTML = `
-                    <h3><i class="fas fa-clock"></i> Próximos Vencimentos (7 dias)</h3>
-                    <div class="alert alert-info">
-                        <i class="fas fa-info-circle"></i> Nenhum vencimento nos próximos 7 dias.
-                    </div>
-                `;
-                return;
-            }
-            
-            let html = `
-                <h3><i class="fas fa-clock"></i> Próximos Vencimentos (7 dias)</h3>
-            `;
-            
-            vencimentos.forEach(vencimento => {
-                const dataVenc = new Date(vencimento.data_vencimento);
-                const hoje = new Date();
-                const diasRestantes = Math.ceil((dataVenc - hoje) / (1000 * 60 * 60 * 24));
-                
-                html += `
-                    <div class="vencimento-item">
-                        <div style="display: flex; justify-content: space-between; align-items: center;">
-                            <div>
-                                <strong>${vencimento.cliente_nome}</strong>
-                                <br>
-                                <small>${vencimento.descricao}</small>
-                            </div>
-                            <div style="text-align: right;">
-                                <div style="font-size: 1.2em; font-weight: bold; color: #dc3545;">
-                                    R$ ${vencimento.valor.toLocaleString('pt-BR', {minimumFractionDigits: 2})}
-                                </div>
-                                <div style="font-size: 0.9em; color: #666;">
-                                    ${dataVenc.toLocaleDateString('pt-BR')}
-                                </div>
-                                <div style="font-size: 0.8em; color: ${diasRestantes <= 1 ? '#dc3545' : '#ffc107'};">
-                                    ${diasRestantes === 0 ? 'Vence hoje' : diasRestantes === 1 ? 'Vence amanhã' : `${diasRestantes} dias`}
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                `;
-            });
-            
-            container.innerHTML = html;
-        }
-        
-        function mostrarDetalhesCobranca(evento) {
-            const props = evento.extendedProps;
-            cobrancaSelecionada = props;
-            
-            const modalBody = document.getElementById('modalBody');
-            modalBody.innerHTML = `
-                <div class="form-group">
-                    <label class="form-label">Cliente:</label>
-                    <div style="padding: 10px; background: #f8f9fa; border-radius: 5px; font-weight: 600;">
-                        ${props.cliente_nome}
-                    </div>
-                </div>
-                
-                <div class="form-group">
-                    <label class="form-label">Descrição:</label>
-                    <div style="padding: 10px; background: #f8f9fa; border-radius: 5px;">
-                        ${props.descricao}
-                    </div>
-                </div>
-                
-                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
-                    <div class="form-group">
-                        <label class="form-label">Valor Original:</label>
-                        <div style="padding: 10px; background: #f8f9fa; border-radius: 5px; font-weight: 600;">
-                            R$ ${props.valor_original.toLocaleString('pt-BR', {minimumFractionDigits: 2})}
-                        </div>
-                    </div>
-                    
-                    <div class="form-group">
-                        <label class="form-label">Valor Total:</label>
-                        <div style="padding: 10px; background: #f8f9fa; border-radius: 5px; font-weight: 600; color: #dc3545;">
-                            R$ ${props.valor_total.toLocaleString('pt-BR', {minimumFractionDigits: 2})}
-                        </div>
-                    </div>
-                </div>
-                
-                ${props.multa > 0 || props.juros > 0 ? `
-                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
-                        <div class="form-group">
-                            <label class="form-label">Multa:</label>
-                            <div style="padding: 10px; background: #f8f9fa; border-radius: 5px;">
-                                R$ ${props.multa.toLocaleString('pt-BR', {minimumFractionDigits: 2})}
-                            </div>
-                        </div>
-                        
-                        <div class="form-group">
-                            <label class="form-label">Juros:</label>
-                            <div style="padding: 10px; background: #f8f9fa; border-radius: 5px;">
-                                R$ ${props.juros.toLocaleString('pt-BR', {minimumFractionDigits: 2})}
-                            </div>
-                        </div>
-                    </div>
-                ` : ''}
-                
-                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
-                    <div class="form-group">
-                        <label class="form-label">Status:</label>
-                        <div style="padding: 10px; background: ${props.status === 'Pago' ? '#d4edda' : props.status === 'Pendente' ? '#fff3cd' : '#f8d7da'}; border-radius: 5px; font-weight: 600; color: ${props.status === 'Pago' ? '#155724' : props.status === 'Pendente' ? '#856404' : '#721c24'};">
-                            ${props.status}
-                        </div>
-                    </div>
-                    
-                    <div class="form-group">
-                        <label class="form-label">Dias de Atraso:</label>
-                        <div style="padding: 10px; background: #f8f9fa; border-radius: 5px; font-weight: 600; color: ${props.dias_atraso > 0 ? '#dc3545' : '#28a745'};">
-                            ${props.dias_atraso > 0 ? `${props.dias_atraso} dias` : 'Em dia'}
-                        </div>
-                    </div>
-                </div>
-                
-                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
-                    <div class="form-group">
-                        <label class="form-label">Telefone:</label>
-                        <div style="padding: 10px; background: #f8f9fa; border-radius: 5px;">
-                            ${props.cliente_telefone || 'Não informado'}
-                        </div>
-                    </div>
-                    
-                    <div class="form-group">
-                        <label class="form-label">Email:</label>
-                        <div style="padding: 10px; background: #f8f9fa; border-radius: 5px;">
-                            ${props.cliente_email || 'Não informado'}
-                        </div>
-                    </div>
-                </div>
-                
-                <div style="margin-top: 25px; text-align: center;">
-                    ${props.status === 'Pendente' ? `
-                        <button class="btn btn-primary" onclick="mostrarModalPagamento()">
-                            <i class="fas fa-credit-card"></i> Registrar Pagamento
-                        </button>
-                    ` : ''}
-                    <button class="btn btn-secondary" onclick="fecharModal()">
-                        <i class="fas fa-times"></i> Fechar
-                    </button>
-                </div>
-            `;
-            
-            document.getElementById('cobrancaModal').style.display = 'block';
-        }
-        
-        function mostrarModalPagamento() {
-            const props = cobrancaSelecionada;
-            
-            const pagamentoBody = document.getElementById('pagamentoBody');
-            pagamentoBody.innerHTML = `
-                <div class="alert alert-info">
-                    <i class="fas fa-info-circle"></i> 
-                    Registrando pagamento para: <strong>${props.cliente_nome}</strong>
-                </div>
-                
-                <form id="formPagamento">
-                    <div class="form-group">
-                        <label class="form-label">Valor a Pagar:</label>
-                        <input type="number" class="form-control" id="valorPago" 
-                               value="${props.valor_total}" step="0.01" min="0" required>
-                        <small style="color: #666;">Valor total com multa e juros: R$ ${props.valor_total.toLocaleString('pt-BR', {minimumFractionDigits: 2})}</small>
-                    </div>
-                    
-                    <div class="form-group">
-                        <label class="form-label">Forma de Pagamento:</label>
-                        <select class="form-control" id="formaPagamento" required>
-                            <option value="Dinheiro">Dinheiro</option>
-                            <option value="PIX">PIX</option>
-                            <option value="Cartão de Débito">Cartão de Débito</option>
-                            <option value="Cartão de Crédito">Cartão de Crédito</option>
-                            <option value="Transferência">Transferência Bancária</option>
-                            <option value="Boleto">Boleto</option>
-                        </select>
-                    </div>
-                    
-                    <div class="form-group">
-                        <label class="form-label">Observações:</label>
-                        <textarea class="form-control" id="observacoes" rows="3" 
-                                  placeholder="Observações sobre o pagamento (opcional)"></textarea>
-                    </div>
-                    
-                    <div style="text-align: center; margin-top: 25px;">
-                        <button type="submit" class="btn btn-primary">
-                            <i class="fas fa-check"></i> Confirmar Pagamento
-                        </button>
-                        <button type="button" class="btn btn-secondary" onclick="fecharModalPagamento()">
-                            <i class="fas fa-times"></i> Cancelar
-                        </button>
-                    </div>
-                </form>
-            `;
-            
-            document.getElementById('pagamentoModal').style.display = 'block';
-            
-            // Adicionar evento ao formulário
-            document.getElementById('formPagamento').addEventListener('submit', function(e) {
-                e.preventDefault();
-                processarPagamento();
-            });
-        }
-        
-        function processarPagamento() {
-            const valorPago = parseFloat(document.getElementById('valorPago').value);
-            const formaPagamento = document.getElementById('formaPagamento').value;
-            const observacoes = document.getElementById('observacoes').value;
-            
-            const dados = {
-                valor_pago: valorPago,
-                forma_pagamento: formaPagamento,
-                observacoes: observacoes
-            };
-            
-            fetch(`/api/calendario/pagar/${cobrancaSelecionada.id}`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify(dados)
-            })
-            .then(response => response.json())
-            .then(data => {
-                if (data.success) {
-                    alert('Pagamento registrado com sucesso!');
-                    fecharModalPagamento();
-                    fecharModal();
-                    // Recarregar dados
-                    calendar.refetchEvents();
-                    carregarEstatisticas();
-                    carregarProximosVencimentos();
-                } else {
-                    alert('Erro: ' + data.message);
+                    info.jsEvent.preventDefault();
+                    if (info.event.url) {
+                        // Abre o link numa nova aba
+                        window.open(info.event.url, "_blank");
+                    }
                 }
-            })
-            .catch(error => {
-                console.error('Erro:', error);
-                alert('Erro ao processar pagamento');
             });
-        }
-        
-        function fecharModal() {
-            document.getElementById('cobrancaModal').style.display = 'none';
-        }
-        
-        function fecharModalPagamento() {
-            document.getElementById('pagamentoModal').style.display = 'none';
-        }
-        
-        // Fechar modal ao clicar fora dele
-        window.onclick = function(event) {
-            const cobrancaModal = document.getElementById('cobrancaModal');
-            const pagamentoModal = document.getElementById('pagamentoModal');
-            
-            if (event.target === cobrancaModal) {
-                fecharModal();
-            }
-            if (event.target === pagamentoModal) {
-                fecharModalPagamento();
-            }
-        }
+            calendar.render();
+        });
     </script>
 </body>
 </html>

@@ -1,0 +1,27 @@
+INSTRUÇÕES PARA LOGO:
+
+1. STATUS ATUAL:
+   - O código HTML em templates/base.html foi corrigido para referenciar logo.png
+   - O arquivo deve estar na pasta static/img/logo.png
+
+2. SOLUÇÕES:
+
+   OPÇÃO A - Converter SVG existente para PNG:
+   - Use o arquivo logo.svg existente nesta pasta
+   - Converta para PNG usando qualquer editor de imagem
+   - Salve como logo.png nesta pasta
+
+   OPÇÃO B - Criar novo PNG:
+   - Use qualquer editor de imagem (GIMP, Paint, Photoshop)
+   - Crie uma imagem 30x30 pixels
+   - Salve como logo.png nesta pasta
+
+   OPÇÃO C - Usar online converter:
+   - Upload do logo.svg em convertio.co ou ferramentas similares
+   - Converta SVG para PNG
+   - Download e coloque como logo.png nesta pasta
+
+3. VERIFICAÇÃO:
+   Após colocar o logo.png na pasta, a logo deve aparecer automaticamente no cabeçalho da aplicação.
+
+NOTA: O código HTML já está correto e apontando para static/img/logo.png
