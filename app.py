@@ -121,8 +121,30 @@ def init_db():
             ALTER TABLE cobrancas 
             ADD COLUMN IF NOT EXISTS taxa_juros DOUBLE PRECISION DEFAULT 0
         ''')
+        
+        # Garantir que a coluna valor_pago existe
+        cur.execute('''
+            ALTER TABLE cobrancas 
+            ADD COLUMN IF NOT EXISTS valor_pago DOUBLE PRECISION DEFAULT 0
+        ''')
 
-        # Tabela de histórico de pagamentos
+        # Tabela de pagamentos individuais
+        cur.execute('''
+            CREATE TABLE IF NOT EXISTS pagamentos (
+                id SERIAL PRIMARY KEY,
+                cobranca_id INTEGER NOT NULL,
+                valor_pago DOUBLE PRECISION NOT NULL,
+                data_pagamento DATE NOT NULL DEFAULT CURRENT_DATE,
+                observacao TEXT,
+                forma_pagamento TEXT,
+                usuario_id INTEGER,
+                criado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                CONSTRAINT fk_pagamentos_cobranca FOREIGN KEY (cobranca_id) REFERENCES cobrancas (id) ON DELETE CASCADE,
+                CONSTRAINT fk_pagamentos_usuario FOREIGN KEY (usuario_id) REFERENCES usuarios (id)
+            )
+        ''')
+
+        # Tabela de histórico de pagamentos (mantida para compatibilidade)
         cur.execute('''
             CREATE TABLE IF NOT EXISTS historico_pagamentos (
                 id SERIAL PRIMARY KEY,
@@ -416,19 +438,35 @@ def index():
     cur.execute("SELECT COUNT(*) as count FROM cobrancas WHERE status = 'Pago'")
     cobrancas_pagas = cur.fetchone()['count']
     
-    cur.execute("SELECT COALESCE(SUM(valor_total), 0) as total FROM cobrancas WHERE status = 'Pendente'")
-    valor_total_pendente = cur.fetchone()['total']
+    # Nova lógica de cálculo baseada no Saldo Devedor Total
+    from datetime import date
+    hoje = date.today()
+    primeiro_dia_mes = hoje.replace(day=1)
     
-    cur.execute("SELECT COALESCE(SUM(valor_pago), 0) as total FROM cobrancas WHERE status = 'Pago'")
-    valor_total_recebido = cur.fetchone()['total']
+    # Buscar todas as cobranças não pagas para calcular o saldo devedor total
+    cur.execute("SELECT * FROM cobrancas WHERE status != 'Pago'")
+    cobrancas_abertas = cur.fetchall()
+    
+    saldo_devedor_total = 0
+    for cobranca in cobrancas_abertas:
+        total_devido_cobranca = cobranca['valor_original']
+        if hoje > cobranca['data_vencimento']:
+            dias_atraso = (hoje - cobranca['data_vencimento']).days
+            total_devido_cobranca += dias_atraso * 40.00
+        
+        saldo_devedor_total += (total_devido_cobranca - (cobranca['valor_pago'] or 0))
+    
+    # Calcular total recebido no mês atual
+    cur.execute("SELECT COALESCE(SUM(valor_pago), 0) as total FROM pagamentos WHERE data_pagamento >= %s", (primeiro_dia_mes,))
+    total_recebido_mes = cur.fetchone()['total']
     
     stats = {
         'total_clientes': total_clientes,
         'cobrancas_pendentes': cobrancas_pendentes,
         'cobrancas_vencidas': cobrancas_vencidas,
         'cobrancas_pagas': cobrancas_pagas,
-        'valor_total_pendente': valor_total_pendente,
-        'valor_total_recebido': valor_total_recebido,
+        'saldo_devedor_total': saldo_devedor_total,
+        'total_recebido_mes': total_recebido_mes,
     }
     
     # Cobranças recentes com informações do cliente
@@ -459,6 +497,9 @@ def index():
 
         # A SOMA CORRETA: valor_original (que já inclui os juros) + valor_multa
         cobranca_dict['total_a_pagar'] = cobranca_dict['valor_original'] + cobranca_dict['valor_multa']
+        
+        # Calcular saldo devedor (total a pagar - valor já pago)
+        cobranca_dict['saldo_devedor'] = cobranca_dict['total_a_pagar'] - (cobranca_dict['valor_pago'] or 0)
         
         # Para compatibilidade com o template existente, usar total_a_pagar como valor_total
         cobranca_dict['valor_total'] = cobranca_dict['total_a_pagar']
@@ -660,6 +701,9 @@ def visualizar_cliente(cliente_id):
 
             # A SOMA CORRETA: valor_original (que já inclui os juros) + valor_multa
             cobranca_dict['total_a_pagar'] = cobranca_dict['valor_original'] + cobranca_dict['valor_multa']
+            
+            # Calcular saldo devedor (total a pagar - valor já pago)
+            cobranca_dict['saldo_devedor'] = cobranca_dict['total_a_pagar'] - (cobranca_dict['valor_pago'] or 0)
             
             # Adicionar parcelas se for cobrança parcelada
             if cobranca_dict['tipo_cobranca'] == 'Parcelada':
@@ -940,15 +984,15 @@ def cancelar_cobranca(cobranca_id):
     flash('Cobrança cancelada com sucesso!', 'success')
     return redirect(url_for('index'))
 
-@app.route('/cobranca/<int:cobranca_id>/pagar', methods=['POST'])
+@app.route('/cobranca/<int:id>/registrar_pagamento', methods=['POST'])
 @login_required
-def pagar_cobranca(cobranca_id):
-    """Processa o pagamento de uma cobrança."""
+def registrar_pagamento(id):
+    """Registra um pagamento (parcial ou total) para uma cobrança."""
     conn = get_db()
     cur = conn.cursor(row_factory=dict_row)
     
     # Buscar cobrança
-    cur.execute('SELECT * FROM cobrancas WHERE id = %s', (cobranca_id,))
+    cur.execute('SELECT * FROM cobrancas WHERE id = %s', (id,))
     cobranca = cur.fetchone()
     if not cobranca:
         flash('Cobrança não encontrada.', 'danger')
@@ -957,40 +1001,97 @@ def pagar_cobranca(cobranca_id):
         return redirect(url_for('index'))
     
     # Obter dados do formulário
-    valor_pago = float(request.form.get('valor_pago', cobranca['valor_original']))
+    valor_a_pagar = float(request.form['valor_pago'])
+    observacao_pagamento = request.form.get('observacao_pagamento', '')
     forma_pagamento = request.form.get('forma_pagamento', 'Dinheiro')
-    observacoes = request.form.get('observacoes', '')
     
-    # Calcular valores atualizados
-    valores = calcular_valor_atualizado(dict(cobranca))
-    valor_total = valores['valor_total']
-    
-    # Verificar se o valor pago é suficiente
-    if valor_pago < valor_total:
-        flash(f'Valor insuficiente. Valor total: R$ {valor_total:.2f}', 'warning')
+    if valor_a_pagar <= 0:
+        flash('O valor do pagamento deve ser maior que zero.', 'warning')
         cur.close()
         conn.close()
-        return redirect(url_for('index'))
+        return redirect(url_for('visualizar_cliente', cliente_id=cobranca['cliente_id']))
     
-    # Atualizar cobrança
+    # Criar um novo registro de pagamento
+    cur.execute('''
+        INSERT INTO pagamentos (cobranca_id, valor_pago, observacao, forma_pagamento, usuario_id)
+        VALUES (%s, %s, %s, %s, %s)
+    ''', (id, valor_a_pagar, observacao_pagamento, forma_pagamento, session.get('usuario_id')))
+    
+    # Atualizar o total pago na cobrança
+    novo_valor_pago = (cobranca['valor_pago'] or 0) + valor_a_pagar
     cur.execute('''
         UPDATE cobrancas 
-        SET status='Pago', valor_pago=%s, forma_pagamento=%s, 
-            data_pagamento=CURRENT_DATE, atualizado_em=CURRENT_TIMESTAMP
+        SET valor_pago=%s, atualizado_em=CURRENT_TIMESTAMP
         WHERE id=%s
-    ''', (valor_pago, forma_pagamento, cobranca_id))
+    ''', (novo_valor_pago, id))
     
-    # Registrar no histórico de pagamentos
+    # Calcular o saldo devedor atual (incluindo multas)
+    hoje = date.today()
+    total_devido_atual = cobranca['valor_original']
+    if hoje > cobranca['data_vencimento'] and cobranca['status'] != 'Pago':
+        dias_atraso = (hoje - cobranca['data_vencimento']).days
+        total_devido_atual += dias_atraso * 40.00
+    
+    # Se o total pago for maior ou igual ao devido, marca como pago
+    if novo_valor_pago >= total_devido_atual:
+        cur.execute('''
+            UPDATE cobrancas 
+            SET status='Pago', data_pagamento=CURRENT_DATE, atualizado_em=CURRENT_TIMESTAMP
+            WHERE id=%s
+        ''', (id,))
+        flash('Pagamento registrado e cobrança liquidada!', 'success')
+    else:
+        flash(f'Pagamento parcial de R$ {valor_a_pagar:.2f} registrado com sucesso.', 'info')
+    
+    # Registrar também no histórico de pagamentos para compatibilidade
     cur.execute('''
         INSERT INTO historico_pagamentos (cobranca_id, cliente_id, valor_pago, forma_pagamento, observacoes, usuario_id)
         VALUES (%s, %s, %s, %s, %s, %s)
-    ''', (cobranca_id, cobranca['cliente_id'], valor_pago, forma_pagamento, observacoes, session.get('usuario_id')))
+    ''', (id, cobranca['cliente_id'], valor_a_pagar, forma_pagamento, observacao_pagamento, session.get('usuario_id')))
     
     conn.commit()
     cur.close()
     conn.close()
-    flash('Pagamento registrado com sucesso!', 'success')
-    return redirect(url_for('index'))
+    return redirect(url_for('visualizar_cliente', cliente_id=cobranca['cliente_id']))
+
+@app.route('/cobranca/<int:cobranca_id>/pagamentos')
+@login_required
+def visualizar_pagamentos_cobranca(cobranca_id):
+    """Visualiza o histórico de pagamentos de uma cobrança específica."""
+    conn = get_db()
+    cur = conn.cursor(row_factory=dict_row)
+    
+    # Buscar cobrança
+    cur.execute('''
+        SELECT c.*, cl.nome as cliente_nome 
+        FROM cobrancas c
+        JOIN clientes cl ON c.cliente_id = cl.id
+        WHERE c.id = %s
+    ''', (cobranca_id,))
+    cobranca = cur.fetchone()
+    
+    if not cobranca:
+        flash('Cobrança não encontrada.', 'danger')
+        cur.close()
+        conn.close()
+        return redirect(url_for('index'))
+    
+    # Buscar pagamentos individuais
+    cur.execute('''
+        SELECT p.*, u.nome as usuario_nome
+        FROM pagamentos p
+        LEFT JOIN usuarios u ON p.usuario_id = u.id
+        WHERE p.cobranca_id = %s
+        ORDER BY p.data_pagamento DESC, p.criado_em DESC
+    ''', (cobranca_id,))
+    pagamentos = cur.fetchall()
+    
+    cur.close()
+    conn.close()
+    
+    return render_template('pagamentos_cobranca.html', 
+                         cobranca=cobranca, 
+                         pagamentos=pagamentos)
 
 @app.route('/parcela/<int:parcela_id>/pagar', methods=['POST'])
 @login_required
@@ -1315,6 +1416,61 @@ def api_eventos():
 
 
 # --- Rotas de Relatórios ---
+@app.route('/api/relatorios/kpis')
+@login_required
+@gerente_required
+def api_relatorios_kpis():
+    """API para buscar KPIs dos relatórios."""
+    conn = get_db()
+    cur = conn.cursor(row_factory=dict_row)
+    
+    # Estatísticas gerais
+    cur.execute('SELECT COUNT(*) as count FROM clientes')
+    total_clientes = cur.fetchone()['count']
+    
+    cur.execute("SELECT COUNT(*) as count FROM cobrancas WHERE status = 'Pendente'")
+    cobrancas_pendentes = cur.fetchone()['count']
+    
+    cur.execute("SELECT COUNT(*) as count FROM cobrancas WHERE status = 'Pendente' AND data_vencimento < CURRENT_DATE")
+    cobrancas_vencidas = cur.fetchone()['count']
+    
+    cur.execute("SELECT COUNT(*) as count FROM cobrancas WHERE status = 'Pago'")
+    cobrancas_pagas = cur.fetchone()['count']
+    
+    # Nova lógica de cálculo baseada no Saldo Devedor Total
+    from datetime import date
+    hoje = date.today()
+    primeiro_dia_mes = hoje.replace(day=1)
+    
+    # Buscar todas as cobranças não pagas para calcular o saldo devedor total
+    cur.execute("SELECT * FROM cobrancas WHERE status != 'Pago'")
+    cobrancas_abertas = cur.fetchall()
+    
+    saldo_devedor_total = 0
+    for cobranca in cobrancas_abertas:
+        total_devido_cobranca = cobranca['valor_original']
+        if hoje > cobranca['data_vencimento']:
+            dias_atraso = (hoje - cobranca['data_vencimento']).days
+            total_devido_cobranca += dias_atraso * 40.00
+        
+        saldo_devedor_total += (total_devido_cobranca - (cobranca['valor_pago'] or 0))
+    
+    # Calcular total recebido no mês atual
+    cur.execute("SELECT COALESCE(SUM(valor_pago), 0) as total FROM pagamentos WHERE data_pagamento >= %s", (primeiro_dia_mes,))
+    total_recebido_mes = cur.fetchone()['total']
+    
+    cur.close()
+    conn.close()
+    
+    return jsonify({
+        'total_clientes': total_clientes,
+        'cobrancas_pendentes': cobrancas_pendentes,
+        'cobrancas_vencidas': cobrancas_vencidas,
+        'cobrancas_pagas': cobrancas_pagas,
+        'saldo_devedor_total': saldo_devedor_total,
+        'total_recebido_mes': total_recebido_mes,
+    })
+
 @app.route('/relatorios')
 @login_required
 @gerente_required

@@ -314,8 +314,9 @@
                     <tr>
                         <th>Descrição</th>
                         <th>Valor Original</th>
-                        <th>Multa por Atraso</th>
-                        <th>Total a Pagar</th>
+                        <th>Total Pago</th>
+                        <th>Multa</th>
+                        <th>Saldo Devedor</th>
                         <th>Vencimento</th>
                         <th>Status</th>
                         <th>Ações</th>
@@ -326,8 +327,9 @@
                     <tr>
                         <td>{{ cobranca.descricao or 'Sem descrição' }}</td>
                         <td>R$ {{ "{:,.2f}".format(cobranca.valor_original).replace(',', 'X').replace('.', ',').replace('X', '.') }}</td>
+                        <td>R$ {{ "{:,.2f}".format(cobranca.valor_pago or 0).replace(',', 'X').replace('.', ',').replace('X', '.') }}</td>
                         <td>R$ {{ "{:,.2f}".format(cobranca.valor_multa).replace(',', 'X').replace('.', ',').replace('X', '.') }}</td>
-                        <td><strong>R$ {{ "{:,.2f}".format(cobranca.total_a_pagar).replace(',', 'X').replace('.', ',').replace('X', '.') }}</strong></td>
+                        <td><strong style="color: {% if cobranca.saldo_devedor > 0 %}#dc2626{% else %}#059669{% endif %};">R$ {{ "{:,.2f}".format(cobranca.saldo_devedor).replace(',', 'X').replace('.', ',').replace('X', '.') }}</strong></td>
                         <td>{{ cobranca.data_vencimento.strftime('%d/%m/%Y') }}</td>
                         <td>
                             {% if cobranca.status == 'Pago' %}
@@ -339,6 +341,7 @@
                             {% endif %}
                         </td>
                         <td>
+                            <a href="{{ url_for('visualizar_pagamentos_cobranca', cobranca_id=cobranca.id) }}" class="btn-sm" style="background: #3b82f6; color: white; text-decoration: none; padding: 5px 10px; border-radius: 4px; font-size: 12px; margin-right: 5px;">Ver Pagamentos</a>
                             {% if cobranca.status != 'Pago' %}
                             <a href="{{ url_for('editar_cobranca', id=cobranca.id) }}" class="btn-sm" style="background: #667eea; color: white; text-decoration: none; padding: 5px 10px; border-radius: 4px; font-size: 12px; margin-right: 5px;">Editar</a>
                             <button onclick="openPaymentModal({{ cobranca.id }}, '{{ cliente.nome }}', {{ cobranca.total_a_pagar }})" class="btn-sm pay">Pagar</button>
@@ -396,34 +399,18 @@
                 <h2 style="color: #333;">Registrar Pagamento</h2>
                 <span class="close" onclick="closeModal('pagamentoModal')" style="font-size: 28px; font-weight: bold; cursor: pointer; color: #999;">&times;</span>
             </div>
-            <form id="pagamentoForm" method="POST">
+            <form id="pagamentoForm" method="POST" action="">
                 <div style="margin-bottom: 20px;">
-                    <label style="display: block; margin-bottom: 5px; color: #4a5568; font-weight: 500;">Cliente</label>
-                    <input type="text" id="payment_cliente_nome" readonly style="width: 100%; padding: 10px; border: 1px solid #e2e8f0; border-radius: 5px; background: #f7fafc;">
+                    <p>Cobrança ID: <strong id="pagamentoCobrancaId"></strong></p>
+                    <p>Valor Total Devido (com multas): <strong id="pagamentoValorTotal"></strong></p>
                 </div>
                 <div style="margin-bottom: 20px;">
-                    <label style="display: block; margin-bottom: 5px; color: #4a5568; font-weight: 500;">Valor Total da Cobrança</label>
-                    <input type="text" id="payment_valor_total" readonly style="width: 100%; padding: 10px; border: 1px solid #e2e8f0; border-radius: 5px; background: #f7fafc;">
+                    <label for="valor_pago" style="display: block; margin-bottom: 5px; color: #4a5568; font-weight: 500;">Valor a Pagar (R$) *</label>
+                    <input type="number" step="0.01" class="form-control" id="valor_pago" name="valor_pago" required>
                 </div>
                 <div style="margin-bottom: 20px;">
-                    <label for="valor_pago" style="display: block; margin-bottom: 5px; color: #4a5568; font-weight: 500;">Valor Pago (R$) *</label>
-                    <input type="number" id="valor_pago" name="valor_pago" step="0.01" required style="width: 100%; padding: 10px; border: 1px solid #e2e8f0; border-radius: 5px;">
-                </div>
-                <div style="margin-bottom: 20px;">
-                    <label for="forma_pagamento" style="display: block; margin-bottom: 5px; color: #4a5568; font-weight: 500;">Forma de Pagamento *</label>
-                    <select id="forma_pagamento" name="forma_pagamento" required style="width: 100%; padding: 10px; border: 1px solid #e2e8f0; border-radius: 5px;">
-                        <option value="">Selecione...</option>
-                        <option value="Dinheiro">Dinheiro</option>
-                        <option value="Pix">Pix</option>
-                        <option value="Cartão de Crédito">Cartão de Crédito</option>
-                        <option value="Cartão de Débito">Cartão de Débito</option>
-                        <option value="Boleto">Boleto</option>
-                        <option value="Transferência">Transferência</option>
-                    </select>
-                </div>
-                <div style="margin-bottom: 20px;">
-                    <label for="observacoes" style="display: block; margin-bottom: 5px; color: #4a5568; font-weight: 500;">Observações</label>
-                    <textarea id="observacoes" name="observacoes" style="width: 100%; padding: 10px; border: 1px solid #e2e8f0; border-radius: 5px; min-height: 80px; resize: vertical;"></textarea>
+                    <label for="observacao_pagamento" style="display: block; margin-bottom: 5px; color: #4a5568; font-weight: 500;">Observação (Opcional)</label>
+                    <textarea class="form-control" id="observacao_pagamento" name="observacao_pagamento" rows="2"></textarea>
                 </div>
                 <div style="display: flex; gap: 10px; justify-content: flex-end; margin-top: 25px;">
                     <button type="button" onclick="closeModal('pagamentoModal')" style="padding: 10px 25px; background: #e2e8f0; color: #4a5568; border: none; border-radius: 5px; cursor: pointer; font-size: 16px;">Cancelar</button>
@@ -436,9 +423,14 @@
     <script>
         function openPaymentModal(cobrancaId, clienteNome, valorTotal) {
             document.getElementById('pagamentoModal').style.display = "block";
-            document.getElementById('payment_cliente_nome').value = clienteNome;
-            document.getElementById('payment_valor_total').value = `R$ ${valorTotal.toFixed(2).replace('.', ',')}`;
-            document.getElementById('pagamentoForm').action = `/cobranca/${cobrancaId}/pagar`;
+            document.getElementById('pagamentoCobrancaId').textContent = cobrancaId;
+            document.getElementById('pagamentoValorTotal').textContent = `R$ ${valorTotal.toFixed(2).replace('.', ',')}`;
+            
+            var form = document.getElementById('pagamentoForm');
+            form.action = `/cobranca/${cobrancaId}/registrar_pagamento`;
+            
+            // Sugere o valor total no campo de pagamento
+            document.getElementById('valor_pago').value = valorTotal;
         }
 
         function closeModal(modalId) {

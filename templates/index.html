@@ -909,24 +909,24 @@
             
             <div class="stat-card info">
                 <div class="stat-header">
-                    <h3>Valor Total a Receber</h3>
+                    <h3>Saldo Devedor Total</h3>
                     <div class="stat-icon">
                         <i data-feather="trending-up"></i>
                     </div>
                 </div>
-                <div class="stat-value">R$ {{ "{:,.2f}".format(stats.valor_total_pendente).replace(',', 'X').replace('.', ',').replace('X', '.') }}</div>
-                <div class="stat-label">Principal + juros</div>
+                <div class="stat-value">R$ {{ "{:,.2f}".format(stats.saldo_devedor_total).replace(',', 'X').replace('.', ',').replace('X', '.') }}</div>
+                <div class="stat-label">Total devido - pagamentos</div>
             </div>
             
             <div class="stat-card success">
                 <div class="stat-header">
-                    <h3>Valor Recebido</h3>
+                    <h3>Total Recebido no Mês</h3>
                     <div class="stat-icon">
                         <i data-feather="dollar-sign"></i>
                     </div>
                 </div>
-                <div class="stat-value">R$ {{ "{:,.2f}".format(stats.valor_total_recebido).replace(',', 'X').replace('.', ',').replace('X', '.') }}</div>
-                <div class="stat-label">Total recebido</div>
+                <div class="stat-value">R$ {{ "{:,.2f}".format(stats.total_recebido_mes).replace(',', 'X').replace('.', ',').replace('X', '.') }}</div>
+                <div class="stat-label">Recebido este mês</div>
             </div>
         </div>
 
@@ -1016,16 +1016,16 @@
                             <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
                                 <div style="text-align: center; padding: 12px; background: var(--primary-50); border-radius: 8px;">
                                     <div style="font-size: 18px; font-weight: 700; color: var(--primary-600);">
-                                        R$ {{ "{:,.0f}".format(stats.valor_total_pendente).replace(',', 'X').replace('.', ',').replace('X', '.') }}
+                                        R$ {{ "{:,.0f}".format(stats.saldo_devedor_total).replace(',', 'X').replace('.', ',').replace('X', '.') }}
                                     </div>
-                                    <div style="font-size: 12px; color: var(--primary-600); font-weight: 500;">A Receber</div>
+                                    <div style="font-size: 12px; color: var(--primary-600); font-weight: 500;">Saldo Devedor</div>
                                 </div>
                                 
                                 <div style="text-align: center; padding: 12px; background: var(--success-50); border-radius: 8px;">
                                     <div style="font-size: 18px; font-weight: 700; color: var(--success-600);">
-                                        R$ {{ "{:,.0f}".format(stats.valor_total_recebido).replace(',', 'X').replace('.', ',').replace('X', '.') }}
+                                        R$ {{ "{:,.0f}".format(stats.total_recebido_mes).replace(',', 'X').replace('.', ',').replace('X', '.') }}
                                     </div>
-                                    <div style="font-size: 12px; color: var(--success-600); font-weight: 500;">Recebido</div>
+                                    <div style="font-size: 12px; color: var(--success-600); font-weight: 500;">Recebido no Mês</div>
                                 </div>
                             </div>
                         </div>
@@ -1047,6 +1047,8 @@
                             <th>Descrição</th>
                             <th>Valor Original</th>
                             <th>Valor Total</th>
+                            <th>Valor Pago</th>
+                            <th>Saldo Devedor</th>
                             <th>Vencimento</th>
                             <th>Status</th>
                             <th>Dias Atraso</th>
@@ -1072,6 +1074,8 @@
                                 </small>
                                 {% endif %}
                             </td>
+                            <td>R$ {{ "{:,.2f}".format(cobranca.valor_pago or 0).replace(',', 'X').replace('.', ',').replace('X', '.') }}</td>
+                            <td><strong style="color: {% if cobranca.saldo_devedor > 0 %}#dc2626{% else %}#059669{% endif %};">R$ {{ "{:,.2f}".format(cobranca.saldo_devedor).replace(',', 'X').replace('.', ',').replace('X', '.') }}</strong></td>
                             <td>{{ cobranca.data_vencimento.strftime('%d/%m/%Y') }}</td>
                             <td>
                                 {% if cobranca.status == 'Pendente' %}
@@ -1107,6 +1111,10 @@
                             </td>
                             <td>
                                 <div class="table-actions">
+                                    <a href="{{ url_for('visualizar_pagamentos_cobranca', cobranca_id=cobranca.id) }}" class="btn-sm" style="background: #3b82f6; color: white; text-decoration: none; padding: 8px 12px; border-radius: 8px; font-size: 12px; font-weight: 500; display: inline-flex; align-items: center; gap: 4px;">
+                                        <i data-feather="eye" style="width: 12px; height: 12px;"></i>
+                                        Ver Pagamentos
+                                    </a>
                                     <button onclick="openPaymentModal({{ cobranca.id }}, '{{ cobranca.cliente_nome }}', {{ cobranca.total_a_pagar }})" class="btn-sm pay">
                                         <i data-feather="dollar-sign" style="width: 12px; height: 12px;"></i>
                                         Pagar
@@ -1138,34 +1146,18 @@
                 <span class="close" onclick="closeModal('pagamentoModal')">&times;</span>
             </div>
             <div class="modal-body">
-                <form id="pagamentoForm" method="POST">
+                <form id="pagamentoForm" method="POST" action="">
                     <div class="form-group">
-                        <label>Cliente</label>
-                        <input type="text" id="payment_cliente_nome" readonly style="background: var(--gray-50); cursor: not-allowed;">
+                        <p>Cobrança ID: <strong id="pagamentoCobrancaId"></strong></p>
+                        <p>Valor Total Devido (com multas): <strong id="pagamentoValorTotal"></strong></p>
                     </div>
                     <div class="form-group">
-                        <label>Valor Total da Cobrança</label>
-                        <input type="text" id="payment_valor_total" readonly style="background: var(--gray-50); cursor: not-allowed;">
-                    </div>
-                    <div class="form-group">
-                        <label for="valor_pago">Valor Pago (R$) *</label>
+                        <label for="valor_pago">Valor a Pagar (R$) *</label>
                         <input type="number" id="valor_pago" name="valor_pago" step="0.01" required placeholder="0,00">
                     </div>
                     <div class="form-group">
-                        <label for="forma_pagamento">Forma de Pagamento *</label>
-                        <select id="forma_pagamento" name="forma_pagamento" required>
-                            <option value="">Selecione a forma de pagamento...</option>
-                            <option value="Dinheiro">💵 Dinheiro</option>
-                            <option value="Pix">📱 Pix</option>
-                            <option value="Cartão de Crédito">💳 Cartão de Crédito</option>
-                            <option value="Cartão de Débito">💳 Cartão de Débito</option>
-                            <option value="Boleto">📄 Boleto</option>
-                            <option value="Transferência">🏦 Transferência</option>
-                        </select>
-                    </div>
-                    <div class="form-group">
-                        <label for="observacoes">Observações</label>
-                        <textarea id="observacoes" name="observacoes" placeholder="Adicione observações sobre o pagamento (opcional)..."></textarea>
+                        <label for="observacao_pagamento">Observação (Opcional)</label>
+                        <textarea id="observacao_pagamento" name="observacao_pagamento" placeholder="Adicione observações sobre o pagamento (opcional)..."></textarea>
                     </div>
                 </form>
             </div>
@@ -1287,9 +1279,14 @@
             const modal = document.getElementById('pagamentoModal');
             modal.style.display = "block";
             
-            document.getElementById('payment_cliente_nome').value = clienteNome;
-            document.getElementById('payment_valor_total').value = `R$ ${valorTotal.toFixed(2).replace('.', ',')}`;
-            document.getElementById('pagamentoForm').action = `/cobranca/${cobrancaId}/pagar`;
+            document.getElementById('pagamentoCobrancaId').textContent = cobrancaId;
+            document.getElementById('pagamentoValorTotal').textContent = `R$ ${valorTotal.toFixed(2).replace('.', ',')}`;
+            
+            var form = document.getElementById('pagamentoForm');
+            form.action = `/cobranca/${cobrancaId}/registrar_pagamento`;
+            
+            // Sugere o valor total no campo de pagamento
+            document.getElementById('valor_pago').value = valorTotal;
             
             // Focus on valor_pago input
             setTimeout(() => {

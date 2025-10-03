@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pagamentos - {{ cobranca.cliente_nome }}</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        .header {
+            background: white;
+            padding: 20px 30px;
+            border-radius: 10px;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+            margin-bottom: 30px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .header h1 {
+            color: #333;
+            font-size: 28px;
+        }
+
+        .btn {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            text-decoration: none;
+            display: inline-block;
+            font-size: 14px;
+            font-weight: 500;
+            transition: all 0.3s;
+        }
+
+        .btn-primary {
+            background: #667eea;
+            color: white;
+        }
+
+        .btn-secondary {
+            background: #e2e8f0;
+            color: #4a5568;
+        }
+
+        .btn:hover {
+            transform: translateY(-2px);
+        }
+
+        .info-card {
+            background: white;
+            padding: 25px;
+            border-radius: 10px;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+            margin-bottom: 30px;
+        }
+
+        .info-card h3 {
+            color: #333;
+            margin-bottom: 15px;
+            font-size: 18px;
+        }
+
+        .info-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+        }
+
+        .info-item {
+            margin-bottom: 10px;
+        }
+
+        .info-label {
+            font-weight: 600;
+            color: #4a5568;
+        }
+
+        .info-value {
+            color: #666;
+        }
+
+        .table-container {
+            background: white;
+            border-radius: 10px;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+            overflow: hidden;
+            margin-bottom: 30px;
+        }
+
+        .table-header {
+            padding: 20px 25px;
+            background: #f7fafc;
+            border-bottom: 1px solid #e2e8f0;
+        }
+
+        .table-header h2 {
+            color: #333;
+            font-size: 20px;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        th, td {
+            padding: 12px;
+            text-align: left;
+            border-bottom: 1px solid #e2e8f0;
+        }
+
+        th {
+            background: #f7fafc;
+            font-weight: 600;
+            color: #4a5568;
+        }
+
+        tr:hover {
+            background: #f7fafc;
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 40px;
+            color: #666;
+        }
+
+        @media (max-width: 768px) {
+            .header {
+                flex-direction: column;
+                gap: 15px;
+            }
+
+            .info-grid {
+                grid-template-columns: 1fr;
+            }
+
+            table {
+                font-size: 14px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>Pagamentos - {{ cobranca.cliente_nome }}</h1>
+            <div>
+                <a href="{{ url_for('visualizar_cliente', cliente_id=cobranca.cliente_id) }}" class="btn btn-secondary">← Voltar ao Cliente</a>
+                <a href="{{ url_for('index') }}" class="btn btn-primary">Dashboard</a>
+            </div>
+        </div>
+
+        <div class="info-card">
+            <h3>Informações da Cobrança</h3>
+            <div class="info-grid">
+                <div class="info-item">
+                    <span class="info-label">ID da Cobrança:</span>
+                    <span class="info-value">{{ cobranca.id }}</span>
+                </div>
+                <div class="info-item">
+                    <span class="info-label">Descrição:</span>
+                    <span class="info-value">{{ cobranca.descricao or 'Sem descrição' }}</span>
+                </div>
+                <div class="info-item">
+                    <span class="info-label">Valor Original:</span>
+                    <span class="info-value">R$ {{ "{:,.2f}".format(cobranca.valor_original).replace(',', 'X').replace('.', ',').replace('X', '.') }}</span>
+                </div>
+                <div class="info-item">
+                    <span class="info-label">Valor Total Devido:</span>
+                    <span class="info-value">R$ {{ "{:,.2f}".format(cobranca.valor_total or cobranca.valor_original).replace(',', 'X').replace('.', ',').replace('X', '.') }}</span>
+                </div>
+                <div class="info-item">
+                    <span class="info-label">Valor Pago:</span>
+                    <span class="info-value">R$ {{ "{:,.2f}".format(cobranca.valor_pago or 0).replace(',', 'X').replace('.', ',').replace('X', '.') }}</span>
+                </div>
+                <div class="info-item">
+                    <span class="info-label">Saldo Devedor:</span>
+                    <span class="info-value" style="color: {% if (cobranca.valor_total or cobranca.valor_original) - (cobranca.valor_pago or 0) > 0 %}#dc2626{% else %}#059669{% endif %}; font-weight: bold;">
+                        R$ {{ "{:,.2f}".format((cobranca.valor_total or cobranca.valor_original) - (cobranca.valor_pago or 0)).replace(',', 'X').replace('.', ',').replace('X', '.') }}
+                    </span>
+                </div>
+                <div class="info-item">
+                    <span class="info-label">Data de Vencimento:</span>
+                    <span class="info-value">{{ cobranca.data_vencimento.strftime('%d/%m/%Y') if cobranca.data_vencimento else 'N/A' }}</span>
+                </div>
+                <div class="info-item">
+                    <span class="info-label">Status:</span>
+                    <span class="info-value" style="color: {% if cobranca.status == 'Pago' %}#059669{% else %}#dc2626{% endif %}; font-weight: bold;">{{ cobranca.status }}</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="table-container">
+            <div class="table-header">
+                <h2>Histórico de Pagamentos</h2>
+            </div>
+            {% if pagamentos %}
+            <table>
+                <thead>
+                    <tr>
+                        <th>Data do Pagamento</th>
+                        <th>Valor Pago</th>
+                        <th>Forma de Pagamento</th>
+                        <th>Observação</th>
+                        <th>Registrado por</th>
+                        <th>Data de Registro</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for pagamento in pagamentos %}
+                    <tr>
+                        <td>{{ pagamento.data_pagamento.strftime('%d/%m/%Y') if pagamento.data_pagamento else 'N/A' }}</td>
+                        <td><strong>R$ {{ "{:,.2f}".format(pagamento.valor_pago).replace(',', 'X').replace('.', ',').replace('X', '.') }}</strong></td>
+                        <td>{{ pagamento.forma_pagamento or 'Não informado' }}</td>
+                        <td>{{ pagamento.observacao or '-' }}</td>
+                        <td>{{ pagamento.usuario_nome or 'Sistema' }}</td>
+                        <td>{{ pagamento.criado_em.strftime('%d/%m/%Y %H:%M') if pagamento.criado_em else 'N/A' }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            {% else %}
+            <div class="empty-state">
+                <p>Nenhum pagamento registrado para esta cobrança.</p>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</body>
+</html>

@@ -1,11 +1,79 @@
 {% extends "base.html" %}
 
-{% block title %}Extração de Relatórios{% endblock %}
+{% block title %}Central de Relatórios{% endblock %}
 
 {% block content %}
 <div class="container mt-4">
-    <h1 class="mb-4">Central de Extração de Relatórios</h1>
+    <h1 class="mb-4">Central de Relatórios</h1>
 
+    <!-- KPIs Cards -->
+    <div class="row mb-4" id="kpis-container">
+        <div class="col-md-3 mb-3">
+            <div class="card border-left-primary shadow h-100 py-2">
+                <div class="card-body">
+                    <div class="row no-gutters align-items-center">
+                        <div class="col mr-2">
+                            <div class="text-xs font-weight-bold text-primary text-uppercase mb-1">Total de Clientes</div>
+                            <div class="h5 mb-0 font-weight-bold text-gray-800" id="total-clientes">-</div>
+                        </div>
+                        <div class="col-auto">
+                            <i class="fas fa-users fa-2x text-gray-300"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-3 mb-3">
+            <div class="card border-left-warning shadow h-100 py-2">
+                <div class="card-body">
+                    <div class="row no-gutters align-items-center">
+                        <div class="col mr-2">
+                            <div class="text-xs font-weight-bold text-warning text-uppercase mb-1">Cobranças Pendentes</div>
+                            <div class="h5 mb-0 font-weight-bold text-gray-800" id="cobrancas-pendentes">-</div>
+                        </div>
+                        <div class="col-auto">
+                            <i class="fas fa-clock fa-2x text-gray-300"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-3 mb-3">
+            <div class="card border-left-info shadow h-100 py-2">
+                <div class="card-body">
+                    <div class="row no-gutters align-items-center">
+                        <div class="col mr-2">
+                            <div class="text-xs font-weight-bold text-info text-uppercase mb-1">Saldo Devedor Total</div>
+                            <div class="h5 mb-0 font-weight-bold text-gray-800" id="saldo-devedor-total">-</div>
+                        </div>
+                        <div class="col-auto">
+                            <i class="fas fa-trending-up fa-2x text-gray-300"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-3 mb-3">
+            <div class="card border-left-success shadow h-100 py-2">
+                <div class="card-body">
+                    <div class="row no-gutters align-items-center">
+                        <div class="col mr-2">
+                            <div class="text-xs font-weight-bold text-success text-uppercase mb-1">Total Recebido no Mês</div>
+                            <div class="h5 mb-0 font-weight-bold text-gray-800" id="total-recebido-mes">-</div>
+                        </div>
+                        <div class="col-auto">
+                            <i class="fas fa-dollar-sign fa-2x text-gray-300"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Relatórios de Exportação -->
     <div class="row">
         <div class="col-md-6 mb-4">
             <div class="card h-100">
@@ -32,4 +100,72 @@
         </div>
     </div>
 </div>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+    .border-left-primary {
+        border-left: 0.25rem solid var(--primary-color) !important;
+    }
+    .border-left-success {
+        border-left: 0.25rem solid var(--success-color) !important;
+    }
+    .border-left-info {
+        border-left: 0.25rem solid var(--info-color) !important;
+    }
+    .border-left-warning {
+        border-left: 0.25rem solid var(--warning-color) !important;
+    }
+    .border-left-danger {
+        border-left: 0.25rem solid var(--danger-color) !important;
+    }
+    .text-xs {
+        font-size: 0.7rem;
+    }
+    .text-gray-300 {
+        color: #dddfeb !important;
+    }
+    .text-gray-800 {
+        color: #5a5c69 !important;
+    }
+</style>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    $(document).ready(function() {
+        // Carregar KPIs via API
+        loadKPIs();
+        
+        // Atualizar KPIs a cada 30 segundos
+        setInterval(loadKPIs, 30000);
+    });
+
+    function loadKPIs() {
+        $.ajax({
+            url: '/api/relatorios/kpis',
+            method: 'GET',
+            success: function(data) {
+                $('#total-clientes').text(data.total_clientes);
+                $('#cobrancas-pendentes').text(data.cobrancas_pendentes);
+                $('#saldo-devedor-total').text('R$ ' + formatCurrency(data.saldo_devedor_total));
+                $('#total-recebido-mes').text('R$ ' + formatCurrency(data.total_recebido_mes));
+            },
+            error: function(xhr, status, error) {
+                console.error('Erro ao carregar KPIs:', error);
+                $('#total-clientes').text('Erro');
+                $('#cobrancas-pendentes').text('Erro');
+                $('#saldo-devedor-total').text('Erro');
+                $('#total-recebido-mes').text('Erro');
+            }
+        });
+    }
+
+    function formatCurrency(value) {
+        return parseFloat(value).toLocaleString('pt-BR', {
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 2
+        });
+    }
+</script>
 {% endblock %}
