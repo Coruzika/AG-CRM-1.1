@@ -421,6 +421,25 @@
     </div>
 
     <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const pagamentoForm = document.getElementById('pagamentoForm');
+
+            if (pagamentoForm) {
+                pagamentoForm.addEventListener('submit', function() {
+                    // Encontra o botão de submissão dentro do formulário
+                    const submitButton = pagamentoForm.querySelector('button[type="submit"]');
+
+                    if (submitButton) {
+                        // Desativa o botão
+                        submitButton.disabled = true;
+
+                        // Altera o texto para dar feedback ao utilizador
+                        submitButton.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> A processar...';
+                    }
+                });
+            }
+        });
+
         function openPaymentModal(cobrancaId, clienteNome, valorTotal) {
             document.getElementById('pagamentoModal').style.display = "block";
             document.getElementById('pagamentoCobrancaId').textContent = cobrancaId;
@@ -431,6 +450,13 @@
             
             // Sugere o valor total no campo de pagamento
             document.getElementById('valor_pago').value = valorTotal;
+            
+            // Reativa o botão quando o modal é aberto (caso tenha sido desativado anteriormente)
+            const submitButton = form.querySelector('button[type="submit"]');
+            if (submitButton) {
+                submitButton.disabled = false;
+                submitButton.innerHTML = 'Registrar Pagamento';
+            }
         }
 
         function closeModal(modalId) {

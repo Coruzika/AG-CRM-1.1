@@ -414,7 +414,7 @@
                             <th>Localização</th>
                             <th>Cobranças</th>
                             <th>Pendências</th>
-                            <th>Valor Pendente</th>
+                            <th>Saldo Devedor</th>
                             <th>Ações</th>
                         </tr>
                     </thead>
@@ -474,9 +474,9 @@
                                 {% endif %}
                             </td>
                             <td>
-                                {% if cliente.valor_pendente > 0 %}
+                                {% if cliente.saldo_devedor_total > 0 %}
                                     <strong style="color: #c53030;">
-                                        R$ {{ "{:,.2f}".format(cliente.valor_pendente).replace(',', 'X').replace('.', ',').replace('X', '.') }}
+                                        R$ {{ "{:,.2f}".format(cliente.saldo_devedor_total).replace(',', 'X').replace('.', ',').replace('X', '.') }}
                                     </strong>
                                 {% else %}
                                     <span style="color: #22543d;">R$ 0,00</span>

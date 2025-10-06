@@ -449,7 +449,7 @@ def index():
     
     saldo_devedor_total = 0
     for cobranca in cobrancas_abertas:
-        total_devido_cobranca = cobranca['valor_original']
+        total_devido_cobranca = cobranca['valor_total'] or cobranca['valor_original']  # Já inclui juros iniciais
         if hoje > cobranca['data_vencimento']:
             dias_atraso = (hoje - cobranca['data_vencimento']).days
             total_devido_cobranca += dias_atraso * 40.00
@@ -495,8 +495,8 @@ def index():
         else:
             cobranca_dict['dias_atraso'] = 0
 
-        # A SOMA CORRETA: valor_original (que já inclui os juros) + valor_multa
-        cobranca_dict['total_a_pagar'] = cobranca_dict['valor_original'] + cobranca_dict['valor_multa']
+        # A SOMA CORRETA: valor_total (que já inclui os juros) + valor_multa
+        cobranca_dict['total_a_pagar'] = (cobranca_dict['valor_total'] or cobranca_dict['valor_original']) + cobranca_dict['valor_multa']
         
         # Calcular saldo devedor (total a pagar - valor já pago)
         cobranca_dict['saldo_devedor'] = cobranca_dict['total_a_pagar'] - (cobranca_dict['valor_pago'] or 0)
@@ -540,6 +540,35 @@ def listar_clientes():
         ORDER BY c.nome ASC
     ''')
     clientes = cur.fetchall()
+    
+    # Calcular o saldo devedor total de cada cliente (incluindo juros e multas)
+    hoje = date.today()
+    
+    for cliente in clientes:
+        saldo_devedor_cliente = 0
+        # Buscar todas as cobranças não pagas do cliente
+        cur.execute('''
+            SELECT * FROM cobrancas 
+            WHERE cliente_id = %s AND status != 'Pago'
+        ''', (cliente['id'],))
+        cobrancas_abertas = cur.fetchall()
+
+        for cobranca in cobrancas_abertas:
+            # Usar valor_total se disponível, senão usar valor_original
+            total_devido_cobranca = cobranca['valor_total'] or cobranca['valor_original']
+            
+            # Adicionar multa por atraso se aplicável
+            if hoje > cobranca['data_vencimento']:
+                dias_atraso = (hoje - cobranca['data_vencimento']).days
+                multa_atraso = dias_atraso * 40.00
+                total_devido_cobranca += multa_atraso
+
+            # Calcular saldo devedor desta cobrança (total devido - valor já pago)
+            saldo_devedor_cliente += (total_devido_cobranca - (cobranca['valor_pago'] or 0))
+
+        # Adiciona o valor calculado dinamicamente ao objeto do cliente
+        cliente['saldo_devedor_total'] = saldo_devedor_cliente
+    
     cur.close()
     conn.close()
     
@@ -699,8 +728,8 @@ def visualizar_cliente(cliente_id):
                 dias_atraso = (hoje - cobranca_dict['data_vencimento']).days
                 cobranca_dict['valor_multa'] = dias_atraso * 40.00
 
-            # A SOMA CORRETA: valor_original (que já inclui os juros) + valor_multa
-            cobranca_dict['total_a_pagar'] = cobranca_dict['valor_original'] + cobranca_dict['valor_multa']
+            # Usar valor_total se disponível, senão usar valor_original + multa
+            cobranca_dict['total_a_pagar'] = (cobranca_dict['valor_total'] or cobranca_dict['valor_original']) + cobranca_dict['valor_multa']
             
             # Calcular saldo devedor (total a pagar - valor já pago)
             cobranca_dict['saldo_devedor'] = cobranca_dict['total_a_pagar'] - (cobranca_dict['valor_pago'] or 0)
@@ -1027,7 +1056,7 @@ def registrar_pagamento(id):
     
     # Calcular o saldo devedor atual (incluindo multas)
     hoje = date.today()
-    total_devido_atual = cobranca['valor_original']
+    total_devido_atual = cobranca['valor_total'] or cobranca['valor_original']
     if hoje > cobranca['data_vencimento'] and cobranca['status'] != 'Pago':
         dias_atraso = (hoje - cobranca['data_vencimento']).days
         total_devido_atual += dias_atraso * 40.00
@@ -1448,7 +1477,7 @@ def api_relatorios_kpis():
     
     saldo_devedor_total = 0
     for cobranca in cobrancas_abertas:
-        total_devido_cobranca = cobranca['valor_original']
+        total_devido_cobranca = cobranca['valor_total'] or cobranca['valor_original']
         if hoje > cobranca['data_vencimento']:
             dias_atraso = (hoje - cobranca['data_vencimento']).days
             total_devido_cobranca += dias_atraso * 40.00
@@ -1575,12 +1604,13 @@ def gerar_relatorio_cobrancas():
                 cl.nome,
                 c.valor_original,
                 c.valor_total,
+                c.valor_pago,
                 c.data_vencimento,
                 c.status,
                 c.data_pagamento
             FROM cobrancas c
             JOIN clientes cl ON c.cliente_id = cl.id
-            ORDER BY c.criado_em DESC
+            ORDER BY c.data_vencimento DESC
         ''')
         cobrancas = cur.fetchall()
         
@@ -1596,8 +1626,11 @@ def gerar_relatorio_cobrancas():
         header_font = Font(bold=True, color="FFFFFF")
         header_fill = PatternFill(start_color="C0504D", end_color="C0504D", fill_type="solid")
 
-        # --- Escreve o Cabeçalho ---
-        headers = ['ID Cobrança', 'Nome Cliente', 'Valor Original', 'Valor Devido', 'Data Vencimento', 'Status Pagamento']
+        # --- CABEÇALHO ATUALIZADO ---
+        headers = [
+            'ID Cobrança', 'Nome Cliente', 'Valor Original', 'Valor Devido (c/ juros)', 
+            'Total Pago', 'Nº de Pagamentos', 'Data Vencimento', 'Status Pagamento'
+        ]
         ws.append(headers)
 
         for col_num, header in enumerate(headers, 1):
@@ -1607,21 +1640,26 @@ def gerar_relatorio_cobrancas():
 
         # --- Escreve os Dados das Cobranças ---
         for cobranca in cobrancas:
-            # Determinar valor devido (valor_total se não pago, valor atualizado se pago)
-            if cobranca['status'] == 'Paga' and cobranca['data_pagamento']:
-                valor_devido = f"R$ 0,00"  # Já foi pago
-                status_pagamento = 'Pago'
-            else:
-                valor_devido = f"R$ {cobranca['valor_total']:.2f}".replace('.', ',') if cobranca['valor_total'] else 'R$ 0,00'
-                status_pagamento = 'Pendente'
+            # LÓGICA ATUALIZADA PARA INCLUIR DADOS DE PAGAMENTO
+            total_pago = cobranca['valor_pago'] or 0.0
+            
+            # Buscar número de pagamentos individuais
+            conn_temp = get_db()
+            cur_temp = conn_temp.cursor(row_factory=dict_row)
+            cur_temp.execute('SELECT COUNT(*) as count FROM pagamentos WHERE cobranca_id = %s', (cobranca['id'],))
+            numero_pagamentos = cur_temp.fetchone()['count']
+            cur_temp.close()
+            conn_temp.close()
 
             ws.append([
-                cobranca['id'],
-                cobranca['nome'],
-                f"R$ {cobranca['valor_original']:.2f}".replace('.', ','),
-                valor_devido,
+                cobranca['id'], 
+                cobranca['nome'], 
+                cobranca['valor_original'],
+                cobranca['valor_total'] or cobranca['valor_original'],
+                total_pago,
+                numero_pagamentos,
                 cobranca['data_vencimento'].strftime('%d/%m/%Y') if cobranca['data_vencimento'] else 'N/A',
-                status_pagamento
+                'Pago' if cobranca['status'] == 'Pago' else 'Pendente'
             ])
 
         # --- Autoajuste da Largura das Colunas ---

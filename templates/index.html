@@ -1052,7 +1052,6 @@
                             <th>Vencimento</th>
                             <th>Status</th>
                             <th>Dias Atraso</th>
-                            <th>Ações</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -1108,24 +1107,6 @@
                                 {% else %}
                                     <span style="color: var(--gray-400);">-</span>
                                 {% endif %}
-                            </td>
-                            <td>
-                                <div class="table-actions">
-                                    <a href="{{ url_for('visualizar_pagamentos_cobranca', cobranca_id=cobranca.id) }}" class="btn-sm" style="background: #3b82f6; color: white; text-decoration: none; padding: 8px 12px; border-radius: 8px; font-size: 12px; font-weight: 500; display: inline-flex; align-items: center; gap: 4px;">
-                                        <i data-feather="eye" style="width: 12px; height: 12px;"></i>
-                                        Ver Pagamentos
-                                    </a>
-                                    <button onclick="openPaymentModal({{ cobranca.id }}, '{{ cobranca.cliente_nome }}', {{ cobranca.total_a_pagar }})" class="btn-sm pay">
-                                        <i data-feather="dollar-sign" style="width: 12px; height: 12px;"></i>
-                                        Pagar
-                                    </button>
-                                    <form action="{{ url_for('cancelar_cobranca', cobranca_id=cobranca.id) }}" method="POST" style="display: inline;" onsubmit="return confirm('Deseja realmente cancelar esta cobrança?');">
-                                        <button type="submit" class="btn-sm cancel">
-                                            <i data-feather="x-circle" style="width: 12px; height: 12px;"></i>
-                                            Cancelar
-                                        </button>
-                                    </form>
-                                </div>
                             </td>
                         </tr>
                         {% endfor %}
