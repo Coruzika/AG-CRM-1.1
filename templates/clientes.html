@@ -4,6 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Clientes - Sistema de Cobrança</title>
+    <!-- Font Awesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css">
     <style>
         * {
             margin: 0;
@@ -32,12 +34,49 @@
             margin-bottom: 30px;
             display: flex;
             justify-content: space-between;
+            align-items: flex-start;
+        }
+
+        /* Flexbox utilities */
+        .d-flex {
+            display: flex;
+        }
+
+        .align-items-center {
             align-items: center;
+        }
+
+        .mb-4 {
+            margin-bottom: 1.5rem;
+        }
+
+        .mr-3 {
+            margin-right: 1rem;
+        }
+
+        .btn-outline-secondary {
+            background: transparent;
+            color: #6c757d;
+            border: 1px solid #6c757d;
+            padding: 8px 12px;
+            border-radius: 5px;
+            text-decoration: none;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.3s;
+        }
+
+        .btn-outline-secondary:hover {
+            background: #6c757d;
+            color: white;
+            transform: translateY(-1px);
         }
 
         .header h1 {
             color: #333;
             font-size: 28px;
+            margin: 0;
         }
 
         .header-actions {
@@ -318,9 +357,13 @@
     <div class="container">
         <!-- Header -->
         <div class="header">
-            <h1>Gerenciar Clientes</h1>
+            <div class="d-flex align-items-center mb-4">
+                <a href="{{ url_for('index') }}" class="btn btn-outline-secondary mr-3" title="Voltar ao Dashboard">
+                    <i class="fas fa-arrow-left"></i>
+                </a>
+                <h1>Gerenciar Clientes</h1>
+            </div>
             <div class="header-actions">
-                <a href="{{ url_for('index') }}" class="btn btn-secondary">← Voltar</a>
                 <a href="{{ url_for('adicionar_cliente') }}" class="btn btn-primary">+ Novo Cliente</a>
             </div>
         </div>

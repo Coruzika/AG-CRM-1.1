@@ -743,7 +743,8 @@ def visualizar_cliente(cliente_id):
     return render_template('cliente_detalhes.html', 
                          cliente=cliente, 
                          cobrancas=cobrancas_processadas,
-                         historico=historico)
+                         historico=historico,
+                         today=hoje)
 
 @app.route('/cliente/<int:cliente_id>/editar', methods=['GET', 'POST'])
 @login_required
@@ -1125,13 +1126,13 @@ def visualizar_pagamentos_cobranca(cobranca_id):
 @app.route('/parcela/<int:parcela_id>/pagar', methods=['POST'])
 @login_required
 def pagar_parcela(parcela_id):
-    """Processa o pagamento de uma parcela individual."""
+    """Marca uma parcela como paga com um clique."""
     conn = get_db()
     cur = conn.cursor(row_factory=dict_row)
     
     # Buscar parcela e cobrança relacionada
     cur.execute('''
-        SELECT p.*, c.cliente_id, c.descricao as cobranca_descricao
+        SELECT p.*, c.cliente_id, c.valor_total
         FROM parcelas p
         JOIN cobrancas c ON p.cobranca_id = c.id
         WHERE p.id = %s
@@ -1144,32 +1145,33 @@ def pagar_parcela(parcela_id):
         conn.close()
         return redirect(url_for('index'))
     
-    # Obter dados do formulário
-    valor_pago = float(request.form.get('valor_pago', parcela['valor']))
-    forma_pagamento = request.form.get('forma_pagamento', 'Dinheiro')
-    observacoes = request.form.get('observacoes', '')
-    
-    # Verificar se o valor pago é suficiente
-    if valor_pago < parcela['valor']:
-        flash(f'Valor insuficiente. Valor da parcela: R$ {parcela["valor"]:.2f}', 'warning')
+    if parcela['status'] == 'Pago':
+        flash('Esta parcela já foi paga.', 'info')
         cur.close()
         conn.close()
         return redirect(url_for('visualizar_cliente', cliente_id=parcela['cliente_id']))
     
     try:
-        # Atualizar parcela
+        # Marcar parcela como paga
         cur.execute('''
             UPDATE parcelas 
-            SET status='Pago', valor_pago=%s, forma_pagamento=%s, 
-                data_pagamento=CURRENT_DATE, observacoes=%s, atualizado_em=CURRENT_TIMESTAMP
+            SET status='Pago', valor_pago=%s, forma_pagamento='Dinheiro', 
+                data_pagamento=CURRENT_DATE, atualizado_em=CURRENT_TIMESTAMP
             WHERE id=%s
-        ''', (valor_pago, forma_pagamento, observacoes, parcela_id))
+        ''', (parcela['valor'], parcela_id))
+        
+        # Atualizar valor pago na cobrança
+        cur.execute('''
+            UPDATE cobrancas 
+            SET valor_pago = COALESCE(valor_pago, 0) + %s, atualizado_em=CURRENT_TIMESTAMP
+            WHERE id=%s
+        ''', (parcela['valor'], parcela['cobranca_id']))
         
         # Registrar no histórico de pagamentos
         cur.execute('''
             INSERT INTO historico_pagamentos (cobranca_id, cliente_id, valor_pago, forma_pagamento, observacoes, usuario_id)
             VALUES (%s, %s, %s, %s, %s, %s)
-        ''', (parcela['cobranca_id'], parcela['cliente_id'], valor_pago, forma_pagamento, observacoes, session.get('usuario_id')))
+        ''', (parcela['cobranca_id'], parcela['cliente_id'], parcela['valor'], 'Dinheiro', f'Pagamento da parcela {parcela["numero_parcela"]}', session.get('usuario_id')))
         
         # Verificar se todas as parcelas da cobrança foram pagas
         cur.execute('SELECT COUNT(*) as total, SUM(CASE WHEN status = \'Pago\' THEN 1 ELSE 0 END) as pagas FROM parcelas WHERE cobranca_id = %s', (parcela['cobranca_id'],))
@@ -1179,13 +1181,14 @@ def pagar_parcela(parcela_id):
             # Todas as parcelas foram pagas, atualizar cobrança principal
             cur.execute('''
                 UPDATE cobrancas 
-                SET status='Pago', valor_pago=valor_total, 
-                    data_pagamento=CURRENT_DATE, atualizado_em=CURRENT_TIMESTAMP
+                SET status='Pago', data_pagamento=CURRENT_DATE, atualizado_em=CURRENT_TIMESTAMP
                 WHERE id=%s
             ''', (parcela['cobranca_id'],))
+            flash(f'Parcela {parcela["numero_parcela"]} marcada como paga e cobrança liquidada!', 'success')
+        else:
+            flash(f'Parcela {parcela["numero_parcela"]} marcada como paga.', 'success')
         
         conn.commit()
-        flash('Pagamento da parcela registrado com sucesso!', 'success')
         
     except Exception as e:
         conn.rollback()

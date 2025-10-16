@@ -4,6 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{{ cliente.nome }} - Sistema de Cobrança</title>
+    <!-- Font Awesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css">
     <style>
         * {
             margin: 0;
@@ -29,14 +31,70 @@
             border-radius: 10px;
             box-shadow: 0 5px 15px rgba(0,0,0,0.1);
             margin-bottom: 30px;
+        }
+
+        /* Flexbox utilities */
+        .d-flex {
             display: flex;
-            justify-content: space-between;
+        }
+
+        .align-items-center {
             align-items: center;
+        }
+
+        .justify-content-between {
+            justify-content: space-between;
+        }
+
+        .mb-4 {
+            margin-bottom: 1.5rem;
+        }
+
+        .mr-3 {
+            margin-right: 1rem;
+        }
+
+        .btn-outline-secondary {
+            background: transparent;
+            color: #6c757d;
+            border: 1px solid #6c757d;
+            padding: 8px 12px;
+            border-radius: 5px;
+            text-decoration: none;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.3s;
+        }
+
+        .btn-outline-secondary:hover {
+            background: #6c757d;
+            color: white;
+            transform: translateY(-1px);
+        }
+
+        .btn-danger {
+            background: #dc3545;
+            color: white;
+            border: 1px solid #dc3545;
+        }
+
+        .btn-danger:hover {
+            background: #c82333;
+            border-color: #bd2130;
+        }
+
+        .btn-sm {
+            padding: 6px 12px;
+            font-size: 12px;
+            line-height: 1.5;
+            border-radius: 4px;
         }
 
         .header h1 {
             color: #333;
             font-size: 28px;
+            margin: 0;
         }
 
         .header-actions {
@@ -212,10 +270,17 @@
 <body>
     <div class="container">
         <div class="header">
-            <h1>{{ cliente.nome }}</h1>
-            <div class="header-actions">
-                <a href="{{ url_for('listar_clientes') }}" class="btn btn-secondary">← Voltar</a>
-                <a href="{{ url_for('editar_cliente', cliente_id=cliente.id) }}" class="btn btn-primary">Editar</a>
+            <div class="d-flex justify-content-between align-items-center mb-4">
+                <div class="d-flex align-items-center">
+                    <a href="{{ url_for('index') }}" class="btn btn-secondary btn-sm mr-3" title="Voltar ao Início">
+                        <i class="fas fa-home"></i> Início
+                    </a>
+                    <h1>Detalhes de {{ cliente.nome }}</h1>
+                </div>
+                <div>
+                    <a href="{{ url_for('editar_cliente', cliente_id=cliente.id) }}" class="btn btn-primary">Editar Cliente</a>
+                    <button type="button" class="btn btn-danger" data-toggle="modal" data-target="#excluirModal">Excluir</button>
+                </div>
             </div>
         </div>
 
@@ -324,7 +389,7 @@
                 </thead>
                 <tbody>
                     {% for cobranca in cobrancas %}
-                    <tr>
+                    <tr class="{% if cobranca.status == 'Pago' %}table-success{% elif cobranca.data_vencimento < today %}table-danger{% endif %}">
                         <td>{{ cobranca.descricao or 'Sem descrição' }}</td>
                         <td>R$ {{ "{:,.2f}".format(cobranca.valor_original).replace(',', 'X').replace('.', ',').replace('X', '.') }}</td>
                         <td>R$ {{ "{:,.2f}".format(cobranca.valor_pago or 0).replace(',', 'X').replace('.', ',').replace('X', '.') }}</td>
@@ -341,6 +406,11 @@
                             {% endif %}
                         </td>
                         <td>
+                            {% if cobranca.tipo_cobranca == 'Parcelada' %}
+                                <button class="btn-sm" type="button" onclick="toggleParcelas({{ cobranca.id }})" style="background: #3b82f6; color: white; text-decoration: none; padding: 5px 10px; border-radius: 4px; font-size: 12px; margin-right: 5px; border: none; cursor: pointer;">
+                                    Ver Parcelas ({{ cobranca.parcelas|length if cobranca.parcelas else 0 }})
+                                </button>
+                            {% endif %}
                             <a href="{{ url_for('visualizar_pagamentos_cobranca', cobranca_id=cobranca.id) }}" class="btn-sm" style="background: #3b82f6; color: white; text-decoration: none; padding: 5px 10px; border-radius: 4px; font-size: 12px; margin-right: 5px;">Ver Pagamentos</a>
                             {% if cobranca.status != 'Pago' %}
                             <a href="{{ url_for('editar_cobranca', id=cobranca.id) }}" class="btn-sm" style="background: #667eea; color: white; text-decoration: none; padding: 5px 10px; border-radius: 4px; font-size: 12px; margin-right: 5px;">Editar</a>
@@ -351,6 +421,53 @@
                             {% endif %}
                         </td>
                     </tr>
+                    {% if cobranca.tipo_cobranca == 'Parcelada' %}
+                    <tr id="parcelas-{{ cobranca.id }}" style="display: none;">
+                        <td colspan="8" style="padding: 0;">
+                            <div style="background: #f8f9fa; padding: 20px; border-left: 4px solid #3b82f6;">
+                                <h6 style="margin-bottom: 15px; color: #333; font-size: 16px;">📋 Detalhes das Parcelas</h6>
+                                <table style="width: 100%; border-collapse: collapse; background: white; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
+                                    <thead style="background: #e9ecef;">
+                                        <tr>
+                                            <th style="padding: 12px; text-align: left; font-weight: 600; color: #495057; border-bottom: 1px solid #dee2e6;">#</th>
+                                            <th style="padding: 12px; text-align: left; font-weight: 600; color: #495057; border-bottom: 1px solid #dee2e6;">Vencimento</th>
+                                            <th style="padding: 12px; text-align: left; font-weight: 600; color: #495057; border-bottom: 1px solid #dee2e6;">Valor</th>
+                                            <th style="padding: 12px; text-align: left; font-weight: 600; color: #495057; border-bottom: 1px solid #dee2e6;">Status</th>
+                                            <th style="padding: 12px; text-align: center; font-weight: 600; color: #495057; border-bottom: 1px solid #dee2e6;">Ação</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {% for parcela in cobranca.parcelas|sort(attribute='numero_parcela') %}
+                                        <tr style="{% if parcela.status == 'Pago' %}background-color: #d4edda;{% elif parcela.data_vencimento < today %}background-color: #f8d7da;{% endif %}">
+                                            <td style="padding: 12px; border-bottom: 1px solid #dee2e6;">{{ parcela.numero_parcela }}</td>
+                                            <td style="padding: 12px; border-bottom: 1px solid #dee2e6;">{{ parcela.data_vencimento.strftime('%d/%m/%Y') }}</td>
+                                            <td style="padding: 12px; border-bottom: 1px solid #dee2e6; font-weight: 600;">R$ {{ "{:,.2f}".format(parcela.valor).replace(',', 'X').replace('.', ',').replace('X', '.') }}</td>
+                                            <td style="padding: 12px; border-bottom: 1px solid #dee2e6;">
+                                                {% if parcela.status == 'Pago' %}
+                                                    <span class="badge paid">✅ Pago</span>
+                                                {% else %}
+                                                    <span class="badge pending">⏳ Pendente</span>
+                                                {% endif %}
+                                            </td>
+                                            <td style="padding: 12px; border-bottom: 1px solid #dee2e6; text-align: center;">
+                                                {% if parcela.status != 'Pago' %}
+                                                <form action="{{ url_for('pagar_parcela', parcela_id=parcela.id) }}" method="POST" style="display: inline;" onsubmit="return confirm('Confirmar pagamento da parcela {{ parcela.numero_parcela }} no valor de R$ {{ '%.2f'|format(parcela.valor) }}?');">
+                                                    <button type="submit" style="background: #28a745; color: white; border: none; padding: 6px 12px; border-radius: 4px; cursor: pointer; font-size: 12px; font-weight: 500;">
+                                                        💰 Pagar
+                                                    </button>
+                                                </form>
+                                                {% else %}
+                                                    <span style="color: #28a745; font-weight: 600; font-size: 12px;">✓ Pago</span>
+                                                {% endif %}
+                                            </td>
+                                        </tr>
+                                        {% endfor %}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </td>
+                    </tr>
+                    {% endif %}
                     {% endfor %}
                 </tbody>
             </table>
@@ -466,6 +583,21 @@
         window.onclick = function(event) {
             if (event.target.className === 'modal') {
                 event.target.style.display = "none";
+            }
+        }
+
+        function toggleParcelas(cobrancaId) {
+            const parcelasRow = document.getElementById('parcelas-' + cobrancaId);
+            const button = event.target;
+            
+            if (parcelasRow.style.display === 'none' || parcelasRow.style.display === '') {
+                parcelasRow.style.display = 'table-row';
+                button.innerHTML = button.innerHTML.replace('Ver Parcelas', 'Ocultar Parcelas');
+                button.style.background = '#dc3545';
+            } else {
+                parcelasRow.style.display = 'none';
+                button.innerHTML = button.innerHTML.replace('Ocultar Parcelas', 'Ver Parcelas');
+                button.style.background = '#3b82f6';
             }
         }
     </script>
