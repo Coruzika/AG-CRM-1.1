@@ -4,9 +4,10 @@ import os
 import sys
 import io
 import csv
-from flask import Flask, render_template, request, redirect, url_for, flash, session, Response, jsonify
+from flask import Flask, render_template, request, redirect, url_for, flash, session, Response, jsonify, send_from_directory
 from datetime import datetime, timedelta, date
 from werkzeug.security import generate_password_hash, check_password_hash
+from werkzeug.utils import secure_filename
 from functools import wraps
 import secrets
 import re
@@ -28,6 +29,10 @@ except ImportError:
 app = Flask(__name__)
 # Usa SECRET_KEY do ambiente em produção; gera uma chave temporária caso não definida
 app.secret_key = os.getenv('SECRET_KEY', secrets.token_hex(16))  # Chave secreta para sessões
+
+# Configuração de uploads
+UPLOAD_FOLDER = 'uploads'
+app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 
 
 # --- Configuração e Inicialização do Banco de Dados ---
@@ -87,6 +92,17 @@ def init_db():
                 observacoes TEXT,
                 criado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 atualizado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
+
+        # Tabela de documentos de clientes
+        cur.execute('''
+            CREATE TABLE IF NOT EXISTS documentos (
+                id SERIAL PRIMARY KEY,
+                cliente_id INTEGER NOT NULL,
+                nome_ficheiro TEXT NOT NULL,
+                criado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                CONSTRAINT fk_documentos_cliente FOREIGN KEY (cliente_id) REFERENCES clientes (id) ON DELETE CASCADE
             )
         ''')
 
@@ -581,6 +597,12 @@ def listar_clientes():
 def adicionar_cliente():
     """Adiciona um novo cliente."""
     if request.method == 'POST':
+        # Verificação: pelo menos um documento deve ser anexado
+        files = request.files.getlist('documentos')
+        if not files or (len(files) == 1 and (not files[0] or files[0].filename == '')):
+            flash('É obrigatório anexar pelo menos um documento.', 'danger')
+            return render_template('cliente_form.html', cliente=None)
+
         dados = {
             'nome': request.form['nome'],
             'cpf_cnpj': request.form.get('cpf_cnpj', ''),
@@ -651,7 +673,21 @@ def adicionar_cliente():
                 INSERT INTO clientes (nome, cpf_cnpj, rg, email, telefone, telefone_secundario, chave_pix,
                                     endereco, cidade, estado, cep, referencia, telefone_referencia, endereco_referencia, observacoes)
                 VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                RETURNING id
             ''', tuple(dados.values()))
+            novo_cliente_id = cur.fetchone()[0]
+
+            # Processar uploads de documentos
+            if files:
+                for file in files:
+                    if file and file.filename:
+                        filename = secure_filename(file.filename)
+                        client_upload_folder = os.path.join(app.config['UPLOAD_FOLDER'], str(novo_cliente_id))
+                        os.makedirs(client_upload_folder, exist_ok=True)
+                        file_path = os.path.join(client_upload_folder, filename)
+                        file.save(file_path)
+                        cur.execute('INSERT INTO documentos (cliente_id, nome_ficheiro) VALUES (%s, %s)', (novo_cliente_id, filename))
+
             conn.commit()
             flash('Cliente adicionado com sucesso!', 'success')
             return redirect(url_for('listar_clientes'))
@@ -696,9 +732,12 @@ def visualizar_cliente(cliente_id):
     ''', (cliente_id,))
     historico = cur.fetchall()
     
+    # Carregar documentos do cliente
+    cur = get_db().cursor(row_factory=dict_row)
+    cur.execute('SELECT * FROM documentos WHERE cliente_id = %s ORDER BY id DESC', (cliente_id,))
+    documentos = cur.fetchall()
     cur.close()
-    conn.close()
-    
+
     # Buscar parcelas para cobranças parceladas
     parcelas_por_cobranca = {}
     for cobranca in cobrancas:
@@ -744,6 +783,7 @@ def visualizar_cliente(cliente_id):
                          cliente=cliente, 
                          cobrancas=cobrancas_processadas,
                          historico=historico,
+                         documentos=documentos,
                          today=hoje)
 
 @app.route('/cliente/<int:cliente_id>/editar', methods=['GET', 'POST'])
@@ -857,6 +897,19 @@ def editar_cliente(cliente_id):
             ''', (dados['nome'], dados['cpf_cnpj'], dados['rg'], dados['email'], dados['telefone'], 
                  dados['telefone_secundario'], dados['chave_pix'], dados['endereco'], dados['cidade'], 
                  dados['estado'], dados['cep'], dados['referencia'], dados['telefone_referencia'], dados['endereco_referencia'], dados['observacoes'], cliente_id))
+
+            # Processar uploads de documentos (se houver)
+            files = request.files.getlist('documentos')
+            if files:
+                for file in files:
+                    if file and file.filename:
+                        filename = secure_filename(file.filename)
+                        client_upload_folder = os.path.join(app.config['UPLOAD_FOLDER'], str(cliente_id))
+                        os.makedirs(client_upload_folder, exist_ok=True)
+                        file_path = os.path.join(client_upload_folder, filename)
+                        file.save(file_path)
+                        cur.execute('INSERT INTO documentos (cliente_id, nome_ficheiro) VALUES (%s, %s)', (cliente_id, filename))
+
             conn.commit()
             flash('Cliente atualizado com sucesso!', 'success')
             cur.close()
@@ -1440,6 +1493,12 @@ def api_eventos():
             })
     
     return jsonify(eventos)
+
+# --- Rota para servir uploads ---
+@app.route('/uploads/<int:cliente_id>/<path:filename>')
+@login_required
+def uploaded_file(cliente_id, filename):
+    return send_from_directory(os.path.join(app.config['UPLOAD_FOLDER'], str(cliente_id)), filename)
 
 
 

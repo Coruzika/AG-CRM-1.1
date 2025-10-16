@@ -365,7 +365,7 @@
 
         <!-- Form Container -->
         <div class="form-container">
-            <form method="POST" id="clienteForm" novalidate>
+            <form method="POST" id="clienteForm" novalidate enctype="multipart/form-data">
                 <!-- Informações Básicas -->
                 <div class="form-section">
                     <h3 class="section-title">Informações Básicas</h3>
@@ -477,6 +477,15 @@
                     <div class="form-group">
                         <label for="observacoes">Observações</label>
                         <textarea id="observacoes" name="observacoes" placeholder="Informações adicionais sobre o cliente...">{{ cliente.observacoes if cliente else '' }}</textarea>
+                    </div>
+                </div>
+
+                <!-- Documentos -->
+                <div class="form-section">
+                    <h3 class="section-title">Documentos</h3>
+                    <div class="form-group">
+                        <label for="documentos">Anexar Documentos (RG, CPF, Comprovativo de Endereço, etc.)</label>
+                        <input type="file" class="form-control-file" id="documentos" name="documentos" multiple required>
                     </div>
                 </div>
 

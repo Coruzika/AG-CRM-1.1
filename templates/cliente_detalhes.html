@@ -507,6 +507,23 @@
             </table>
         </div>
         {% endif %}
+
+        <div class="table-container">
+            <div class="table-header">
+                <h2>Documentos Anexados</h2>
+            </div>
+            <ul style="list-style: none; padding: 0; margin: 0;">
+                {% if documentos and documentos|length > 0 %}
+                    {% for doc in documentos %}
+                        <li style="padding: 12px; border-bottom: 1px solid #e2e8f0;">
+                            <a href="{{ url_for('uploaded_file', cliente_id=cliente.id, filename=doc.nome_ficheiro) }}" target="_blank">{{ doc.nome_ficheiro }}</a>
+                        </li>
+                    {% endfor %}
+                {% else %}
+                    <li style="padding: 12px;">Nenhum documento anexado.</li>
+                {% endif %}
+            </ul>
+        </div>
     </div>
 
     <!-- Modal Registrar Pagamento -->
