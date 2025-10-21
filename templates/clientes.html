@@ -73,6 +73,56 @@
             transform: translateY(-1px);
         }
 
+        .btn-outline-primary {
+            background: transparent;
+            color: #667eea;
+            border: 1px solid #667eea;
+            padding: 8px 12px;
+            border-radius: 5px;
+            text-decoration: none;
+            display: inline-block;
+            transition: all 0.3s;
+        }
+
+        .btn-outline-primary:hover {
+            background: #667eea;
+            color: white;
+            transform: translateY(-1px);
+        }
+
+        .btn-outline-danger {
+            background: transparent;
+            color: #f56565;
+            border: 1px solid #f56565;
+            padding: 8px 12px;
+            border-radius: 5px;
+            text-decoration: none;
+            display: inline-block;
+            transition: all 0.3s;
+        }
+
+        .btn-outline-danger:hover {
+            background: #f56565;
+            color: white;
+            transform: translateY(-1px);
+        }
+
+        .btn-danger {
+            background: #f56565;
+            color: white;
+            border: none;
+            padding: 8px 12px;
+            border-radius: 5px;
+            text-decoration: none;
+            display: inline-block;
+            transition: all 0.3s;
+        }
+
+        .btn-danger:hover {
+            background: #e53e3e;
+            transform: translateY(-1px);
+        }
+
         .header h1 {
             color: #333;
             font-size: 28px;
@@ -384,6 +434,21 @@
 
         <!-- Filters -->
         <div class="filters">
+            <!-- Filtro de Status de Pagamento -->
+            <div class="mb-3" style="margin-bottom: 20px;">
+                <strong>Filtrar por:</strong>
+                <a href="{{ url_for('listar_clientes', status='todos') }}" 
+                   class="btn btn-sm {{ 'btn-primary' if filtro_ativo == 'todos' else 'btn-outline-primary' }}"
+                   style="margin-left: 10px;">
+                   Todos os Clientes
+                </a>
+                <a href="{{ url_for('listar_clientes', status='atrasado') }}" 
+                   class="btn btn-sm {{ 'btn-danger' if filtro_ativo == 'atrasado' else 'btn-outline-danger' }}"
+                   style="margin-left: 5px;">
+                   Com Pagamentos Atrasados
+                </a>
+            </div>
+            
             <div class="filters-row">
                 <div class="filter-group">
                     <label for="searchName">Buscar por nome</label>

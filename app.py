@@ -535,26 +535,58 @@ def index():
 @login_required
 def listar_clientes():
     """Lista todos os clientes cadastrados."""
+    hoje = date.today()
+    
+    # Verifica se o filtro está ativo
+    filtro_status = request.args.get('status', 'todos')  # 'todos' ou 'atrasado'
+    
     conn = get_db()
     cur = conn.cursor(row_factory=dict_row)
-    cur.execute('''
-        SELECT 
-            c.*,
-            COALESCE(agg.total_cobrancas, 0) AS total_cobrancas,
-            COALESCE(agg.cobrancas_pendentes, 0) AS cobrancas_pendentes,
-            COALESCE(agg.valor_pendente, 0) AS valor_pendente
-        FROM clientes c
-        LEFT JOIN (
+    
+    if filtro_status == 'atrasado':
+        # Busca apenas clientes com cobranças vencidas e não pagas
+        cur.execute('''
+            SELECT DISTINCT
+                c.*,
+                COALESCE(agg.total_cobrancas, 0) AS total_cobrancas,
+                COALESCE(agg.cobrancas_pendentes, 0) AS cobrancas_pendentes,
+                COALESCE(agg.valor_pendente, 0) AS valor_pendente
+            FROM clientes c
+            INNER JOIN cobrancas cob ON cob.cliente_id = c.id
+            LEFT JOIN (
+                SELECT 
+                    cliente_id,
+                    COUNT(id) AS total_cobrancas,
+                    SUM(CASE WHEN status = 'Pendente' THEN 1 ELSE 0 END) AS cobrancas_pendentes,
+                    SUM(CASE WHEN status = 'Pendente' THEN valor_original ELSE 0 END) AS valor_pendente
+                FROM cobrancas
+                GROUP BY cliente_id
+            ) agg ON agg.cliente_id = c.id
+            WHERE cob.data_vencimento < %s 
+            AND cob.status != 'Pago'
+            ORDER BY c.nome ASC
+        ''', (hoje,))
+    else:
+        # Busca todos os clientes
+        cur.execute('''
             SELECT 
-                cliente_id,
-                COUNT(id) AS total_cobrancas,
-                SUM(CASE WHEN status = 'Pendente' THEN 1 ELSE 0 END) AS cobrancas_pendentes,
-                SUM(CASE WHEN status = 'Pendente' THEN valor_original ELSE 0 END) AS valor_pendente
-            FROM cobrancas
-            GROUP BY cliente_id
-        ) agg ON agg.cliente_id = c.id
-        ORDER BY c.nome ASC
-    ''')
+                c.*,
+                COALESCE(agg.total_cobrancas, 0) AS total_cobrancas,
+                COALESCE(agg.cobrancas_pendentes, 0) AS cobrancas_pendentes,
+                COALESCE(agg.valor_pendente, 0) AS valor_pendente
+            FROM clientes c
+            LEFT JOIN (
+                SELECT 
+                    cliente_id,
+                    COUNT(id) AS total_cobrancas,
+                    SUM(CASE WHEN status = 'Pendente' THEN 1 ELSE 0 END) AS cobrancas_pendentes,
+                    SUM(CASE WHEN status = 'Pendente' THEN valor_original ELSE 0 END) AS valor_pendente
+                FROM cobrancas
+                GROUP BY cliente_id
+            ) agg ON agg.cliente_id = c.id
+            ORDER BY c.nome ASC
+        ''')
+    
     clientes = cur.fetchall()
     
     # Calcular o saldo devedor total de cada cliente (incluindo juros e multas)
@@ -588,7 +620,8 @@ def listar_clientes():
     cur.close()
     conn.close()
     
-    return render_template('clientes.html', clientes=clientes)
+    # Passa o status do filtro para o template
+    return render_template('clientes.html', clientes=clientes, filtro_ativo=filtro_status)
 
 
 
