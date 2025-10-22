@@ -394,7 +394,7 @@
                         <td>R$ {{ "{:,.2f}".format(cobranca.valor_original).replace(',', 'X').replace('.', ',').replace('X', '.') }}</td>
                         <td>R$ {{ "{:,.2f}".format(cobranca.valor_pago or 0).replace(',', 'X').replace('.', ',').replace('X', '.') }}</td>
                         <td>R$ {{ "{:,.2f}".format(cobranca.valor_multa).replace(',', 'X').replace('.', ',').replace('X', '.') }}</td>
-                        <td><strong style="color: {% if cobranca.saldo_devedor > 0 %}#dc2626{% else %}#059669{% endif %};">R$ {{ "{:,.2f}".format(cobranca.saldo_devedor).replace(',', 'X').replace('.', ',').replace('X', '.') }}</strong></td>
+                        <td><strong style="color: {% if cobranca.saldo_devedor_calculado > 0 %}#dc2626{% else %}#059669{% endif %};">R$ {{ "{:,.2f}".format(cobranca.saldo_devedor_calculado).replace(',', 'X').replace('.', ',').replace('X', '.') }}</strong></td>
                         <td>{{ cobranca.data_vencimento.strftime('%d/%m/%Y') }}</td>
                         <td>
                             {% if cobranca.status == 'Pago' %}
@@ -408,7 +408,7 @@
                         <td>
                             {% if cobranca.tipo_cobranca == 'Parcelada' %}
                                 <button class="btn-sm" type="button" onclick="toggleParcelas({{ cobranca.id }})" style="background: #3b82f6; color: white; text-decoration: none; padding: 5px 10px; border-radius: 4px; font-size: 12px; margin-right: 5px; border: none; cursor: pointer;">
-                                    Ver Parcelas ({{ cobranca.parcelas|length if cobranca.parcelas else 0 }})
+                                    Ver Parcelas ({{ cobranca.parcelas_com_multa|length if cobranca.parcelas_com_multa else 0 }})
                                 </button>
                             {% endif %}
                             <a href="{{ url_for('visualizar_pagamentos_cobranca', cobranca_id=cobranca.id) }}" class="btn-sm" style="background: #3b82f6; color: white; text-decoration: none; padding: 5px 10px; border-radius: 4px; font-size: 12px; margin-right: 5px;">Ver Pagamentos</a>
@@ -437,21 +437,27 @@
                                         </tr>
                                     </thead>
                                     <tbody>
-                                        {% for parcela in cobranca.parcelas|sort(attribute='numero_parcela') %}
-                                        <tr style="{% if parcela.status == 'Pago' %}background-color: #d4edda;{% elif parcela.data_vencimento < today %}background-color: #f8d7da;{% endif %}">
-                                            <td style="padding: 12px; border-bottom: 1px solid #dee2e6;">{{ parcela.numero_parcela }}</td>
-                                            <td style="padding: 12px; border-bottom: 1px solid #dee2e6;">{{ parcela.data_vencimento.strftime('%d/%m/%Y') }}</td>
-                                            <td style="padding: 12px; border-bottom: 1px solid #dee2e6; font-weight: 600;">R$ {{ "{:,.2f}".format(parcela.valor).replace(',', 'X').replace('.', ',').replace('X', '.') }}</td>
+                                        {% for parcela_data in cobranca.parcelas_com_multa %}
+                                        <tr style="{% if parcela_data.status == 'Pago' %}background-color: #d4edda;{% elif parcela_data.vencimento < today %}background-color: #f8d7da;{% endif %}">
+                                            <td style="padding: 12px; border-bottom: 1px solid #dee2e6;">{{ parcela_data.numero }}</td>
+                                            <td style="padding: 12px; border-bottom: 1px solid #dee2e6;">{{ parcela_data.vencimento.strftime('%d/%m/%Y') }}</td>
+                                            <td style="padding: 12px; border-bottom: 1px solid #dee2e6; font-weight: 600;">
+                                                R$ {{ "{:,.2f}".format(parcela_data.valor_original).replace(',', 'X').replace('.', ',').replace('X', '.') }}
+                                                {% if parcela_data.multa > 0 %}
+                                                <br><small style="color: #dc2626;">+ Multa: R$ {{ "{:,.2f}".format(parcela_data.multa).replace(',', 'X').replace('.', ',').replace('X', '.') }}</small>
+                                                <br><strong style="color: #dc2626;">Total: R$ {{ "{:,.2f}".format(parcela_data.valor_atualizado).replace(',', 'X').replace('.', ',').replace('X', '.') }}</strong>
+                                                {% endif %}
+                                            </td>
                                             <td style="padding: 12px; border-bottom: 1px solid #dee2e6;">
-                                                {% if parcela.status == 'Pago' %}
+                                                {% if parcela_data.status == 'Pago' %}
                                                     <span class="badge paid">✅ Pago</span>
                                                 {% else %}
                                                     <span class="badge pending">⏳ Pendente</span>
                                                 {% endif %}
                                             </td>
                                             <td style="padding: 12px; border-bottom: 1px solid #dee2e6; text-align: center;">
-                                                {% if parcela.status != 'Pago' %}
-                                                <form action="{{ url_for('pagar_parcela', parcela_id=parcela.id) }}" method="POST" style="display: inline;" onsubmit="return confirm('Confirmar pagamento da parcela {{ parcela.numero_parcela }} no valor de R$ {{ '%.2f'|format(parcela.valor) }}?');">
+                                                {% if parcela_data.status != 'Pago' %}
+                                                <form action="{{ url_for('marcar_parcela_paga', id=parcela_data.id) }}" method="POST" style="display: inline;" onsubmit="return confirm('Confirmar pagamento da parcela {{ parcela_data.numero }} no valor de R$ {{ '%.2f'|format(parcela_data.valor_atualizado) }}?');">
                                                     <button type="submit" style="background: #28a745; color: white; border: none; padding: 6px 12px; border-radius: 4px; cursor: pointer; font-size: 12px; font-weight: 500;">
                                                         💰 Pagar
                                                     </button>

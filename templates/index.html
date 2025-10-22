@@ -1067,14 +1067,14 @@
                             <td>R$ {{ "{:,.2f}".format(cobranca.valor_original).replace(',', 'X').replace('.', ',').replace('X', '.') }}</td>
                             <td>
                                 <strong>R$ {{ "{:,.2f}".format(cobranca.total_a_pagar).replace(',', 'X').replace('.', ',').replace('X', '.') }}</strong>
-                                {% if cobranca.valor_multa > 0 %}
+                                {% if cobranca.multa_total_calculada > 0 %}
                                 <br><small style="color: var(--gray-500);">
-                                    Multa por Atraso: R$ {{ "{:.2f}".format(cobranca.valor_multa).replace('.', ',') }}
+                                    Multa por Atraso: R$ {{ "{:.2f}".format(cobranca.multa_total_calculada).replace('.', ',') }}
                                 </small>
                                 {% endif %}
                             </td>
                             <td>R$ {{ "{:,.2f}".format(cobranca.valor_pago or 0).replace(',', 'X').replace('.', ',').replace('X', '.') }}</td>
-                            <td><strong style="color: {% if cobranca.saldo_devedor > 0 %}#dc2626{% else %}#059669{% endif %};">R$ {{ "{:,.2f}".format(cobranca.saldo_devedor).replace(',', 'X').replace('.', ',').replace('X', '.') }}</strong></td>
+                            <td><strong style="color: {% if cobranca.saldo_devedor_calculado > 0 %}#dc2626{% else %}#059669{% endif %};">R$ {{ "{:,.2f}".format(cobranca.saldo_devedor_calculado).replace(',', 'X').replace('.', ',').replace('X', '.') }}</strong></td>
                             <td>{{ cobranca.data_vencimento.strftime('%d/%m/%Y') }}</td>
                             <td>
                                 {% if cobranca.status == 'Pendente' %}
