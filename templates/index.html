@@ -1067,9 +1067,9 @@
                             <td>R$ {{ "{:,.2f}".format(cobranca.valor_original).replace(',', 'X').replace('.', ',').replace('X', '.') }}</td>
                             <td>
                                 <strong>R$ {{ "{:,.2f}".format(cobranca.total_a_pagar).replace(',', 'X').replace('.', ',').replace('X', '.') }}</strong>
-                                {% if cobranca.multa_total_calculada > 0 %}
+                                {% if cobranca.multa_aplicada > 0 %}
                                 <br><small style="color: var(--gray-500);">
-                                    Multa por Atraso: R$ {{ "{:.2f}".format(cobranca.multa_total_calculada).replace('.', ',') }}
+                                    Multa por Atraso: R$ {{ "{:.2f}".format(cobranca.multa_aplicada).replace('.', ',') }}
                                 </small>
                                 {% endif %}
                             </td>
@@ -1112,6 +1112,64 @@
                         {% endfor %}
                     </tbody>
                 </table>
+            </div>
+        </div>
+
+        <!-- Clientes com Parcelas Vencidas -->
+        <div class="table-container">
+            <div class="table-header">
+                <h2>
+                    <i data-feather="alert-triangle" style="width: 20px; height: 20px; margin-right: 8px;"></i>
+                    Clientes com Parcelas Vencidas
+                </h2>
+            </div>
+            <div class="table-content" style="max-height: 400px; overflow-y: auto;">
+                {% if clientes_inadimplentes %}
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Nome</th>
+                                <th>Telefone</th>
+                                <th>Email</th>
+                                <th>Saldo Devedor</th>
+                                <th>Ações</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for cliente in clientes_inadimplentes %}
+                                <tr>
+                                    <td>
+                                        <div class="client-info">
+                                            <strong>{{ cliente.nome }}</strong>
+                                            <small>{{ cliente.cpf_cnpj }}</small>
+                                        </div>
+                                    </td>
+                                    <td>{{ cliente.telefone or '-' }}</td>
+                                    <td>{{ cliente.email or '-' }}</td>
+                                    <td>
+                                        <strong style="color: var(--error-600);">
+                                            R$ {{ "{:,.2f}".format(cliente.saldo_devedor_total).replace(',', 'X').replace('.', ',').replace('X', '.') }}
+                                        </strong>
+                                    </td>
+                                    <td>
+                                        <div class="table-actions">
+                                            <a href="{{ url_for('visualizar_cliente', cliente_id=cliente.id) }}" class="btn-sm" style="background: var(--warning-500); color: white;">
+                                                <i data-feather="eye" style="width: 12px; height: 12px;"></i>
+                                                Ver Detalhes
+                                            </a>
+                                        </div>
+                                    </td>
+                                </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                {% else %}
+                    <div style="padding: 40px; text-align: center; color: var(--gray-500);">
+                        <i data-feather="check-circle" style="width: 48px; height: 48px; margin-bottom: 16px; color: var(--success-500);"></i>
+                        <h3 style="color: var(--success-600); margin-bottom: 8px;">Nenhum cliente com parcelas vencidas</h3>
+                        <p>Nenhum cliente possui parcelas vencidas no momento.</p>
+                    </div>
+                {% endif %}
             </div>
         </div>
     </div>

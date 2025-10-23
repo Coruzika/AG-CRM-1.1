@@ -143,6 +143,18 @@ def init_db():
             ALTER TABLE cobrancas 
             ADD COLUMN IF NOT EXISTS valor_pago DOUBLE PRECISION DEFAULT 0
         ''')
+        
+        # Adicionar coluna multa_manual para parcelas se não existir
+        cur.execute('''
+            ALTER TABLE parcelas 
+            ADD COLUMN IF NOT EXISTS multa_manual DOUBLE PRECISION
+        ''')
+        
+        # Remover coluna multa_manual da tabela cobrancas (não será mais usada)
+        cur.execute('''
+            ALTER TABLE cobrancas 
+            DROP COLUMN IF EXISTS multa_manual
+        ''')
 
         # Tabela de pagamentos individuais
         cur.execute('''
@@ -473,10 +485,7 @@ def index():
         parcelas_pendentes = cur.fetchall()
         
         for parcela in parcelas_pendentes:
-            valor_parcela_atualizado = parcela['valor']
-            if hoje > parcela['data_vencimento']:
-                dias_atraso = (hoje - parcela['data_vencimento']).days
-                valor_parcela_atualizado += dias_atraso * 40.00
+            valor_parcela_atualizado = parcela['valor'] + (parcela['multa_manual'] or 0)
             saldo_devedor_total += valor_parcela_atualizado
     
     # Calcular total recebido no mês atual
@@ -508,10 +517,9 @@ def index():
     cobrancas_atualizadas = []
     for cobranca in cobrancas:
         cobranca_dict = dict(cobranca)
-        multa_total_calculada = 0
         saldo_devedor_calculado = 0
         
-        # Buscar parcelas pendentes desta cobrança
+        # Buscar parcelas pendentes desta cobrança para cálculo do saldo
         cur.execute('''
             SELECT * FROM parcelas 
             WHERE cobranca_id = %s AND status = 'Pendente'
@@ -519,31 +527,66 @@ def index():
         parcelas_pendentes = cur.fetchall()
         
         for parcela in parcelas_pendentes:
-            valor_parcela_atualizado = parcela['valor']
-            if hoje > parcela['data_vencimento']:
-                dias_atraso = (hoje - parcela['data_vencimento']).days
-                multa_parcela = dias_atraso * 40.00
-                multa_total_calculada += multa_parcela
-                valor_parcela_atualizado += multa_parcela
+            valor_parcela_atualizado = parcela['valor'] + (parcela['multa_manual'] or 0)
             saldo_devedor_calculado += valor_parcela_atualizado
         
-        cobranca_dict['multa_total_calculada'] = multa_total_calculada
-        cobranca_dict['saldo_devedor_calculado'] = saldo_devedor_calculado
+        # Adiciona atributos dinâmicos à cobrança para exibição consistente
+        cobranca_dict['multa_aplicada'] = 0  # Multas agora são por parcela
+        cobranca_dict['saldo_devedor_calculado'] = saldo_devedor_calculado - (cobranca_dict['valor_pago'] or 0)
         
         # Para compatibilidade com template existente
-        cobranca_dict['valor_multa'] = multa_total_calculada
-        cobranca_dict['total_a_pagar'] = (cobranca_dict['valor_total'] or cobranca_dict['valor_original']) + multa_total_calculada
-        cobranca_dict['saldo_devedor'] = saldo_devedor_calculado - (cobranca_dict['valor_pago'] or 0)
+        cobranca_dict['valor_multa'] = 0  # Multas agora são por parcela
+        cobranca_dict['total_a_pagar'] = cobranca_dict['saldo_devedor_calculado']
+        cobranca_dict['saldo_devedor'] = cobranca_dict['saldo_devedor_calculado']
         cobranca_dict['dias_atraso'] = max([(hoje - p['data_vencimento']).days for p in parcelas_pendentes if hoje > p['data_vencimento']], default=0)
         
         cobrancas_atualizadas.append(cobranca_dict)
     
+    # --- NOVA CONSULTA ---
+    # Buscar clientes com parcelas vencidas e pendentes
+    cur.execute('''
+        SELECT DISTINCT c.*
+        FROM clientes c
+        INNER JOIN cobrancas cob ON cob.cliente_id = c.id
+        INNER JOIN parcelas p ON p.cobranca_id = cob.id
+        WHERE p.data_vencimento < %s 
+        AND p.status = 'Pendente'
+        ORDER BY c.nome ASC
+    ''', (hoje,))
+    clientes_inadimplentes = cur.fetchall()
+    
+    # Calcular saldo devedor para cada cliente inadimplente
+    for cliente in clientes_inadimplentes:
+        saldo_devedor_cliente = 0
+        
+        # Buscar todas as cobranças não pagas deste cliente
+        cur.execute("SELECT * FROM cobrancas WHERE cliente_id = %s AND status != 'Pago'", (cliente['id'],))
+        cobrancas_abertas = cur.fetchall()
+        
+        for cobranca in cobrancas_abertas:
+            # Buscar parcelas pendentes desta cobrança
+            cur.execute('''
+                SELECT * FROM parcelas 
+                WHERE cobranca_id = %s AND status = 'Pendente'
+            ''', (cobranca['id'],))
+            parcelas_pendentes = cur.fetchall()
+            
+            for parcela in parcelas_pendentes:
+                valor_parcela_atualizado = parcela['valor'] + (parcela['multa_manual'] or 0)
+                saldo_devedor_cliente += valor_parcela_atualizado
+        
+        # Adiciona o valor calculado dinamicamente ao objeto do cliente
+        cliente['saldo_devedor_total'] = saldo_devedor_cliente
+    
+    # --- FIM DA NOVA CONSULTA ---
+
     cur.close()
     conn.close()
     
     return render_template('index.html', 
                          stats=stats, 
                          cobrancas=cobrancas_atualizadas,
+                         clientes_inadimplentes=clientes_inadimplentes,
                          usuario=session)
 
 # --- Rotas de Clientes ---
@@ -626,11 +669,12 @@ def listar_clientes():
             parcelas_pendentes = cur.fetchall()
             
             for parcela in parcelas_pendentes:
-                valor_parcela_atualizado = parcela['valor']
-                if hoje > parcela['data_vencimento']:
-                    dias_atraso = (hoje - parcela['data_vencimento']).days
-                    valor_parcela_atualizado += dias_atraso * 40.00
+                valor_parcela_atualizado = parcela['valor'] + (parcela['multa_manual'] or 0)
                 saldo_devedor_cliente += valor_parcela_atualizado
+            
+            # Se não há parcelas pendentes, usar valor original da cobrança
+            if not parcelas_pendentes:
+                saldo_devedor_cliente += cobranca['valor_original']
 
         # Adiciona o valor calculado dinamicamente ao objeto do cliente
         cliente['saldo_devedor_total'] = saldo_devedor_cliente
@@ -814,16 +858,10 @@ def visualizar_cliente(cliente_id):
 
             for parcela in parcelas:
                 parcela_dict = dict(parcela)
-                parcela_dict['multa_calculada'] = 0
-                parcela_dict['valor_atualizado'] = parcela_dict['valor']
+                parcela_dict['multa_manual'] = parcela_dict['multa_manual'] or 0
+                parcela_dict['valor_atualizado'] = parcela_dict['valor'] + parcela_dict['multa_manual']
 
                 if parcela_dict['status'] == 'Pendente':
-                    if hoje > parcela_dict['data_vencimento']:
-                        dias_atraso = (hoje - parcela_dict['data_vencimento']).days
-                        parcela_dict['multa_calculada'] = dias_atraso * 40.00
-                        multa_total_cobranca += parcela_dict['multa_calculada']
-                        parcela_dict['valor_atualizado'] += parcela_dict['multa_calculada']
-
                     saldo_devedor_cobranca += parcela_dict['valor_atualizado']
 
                 # Guarda os dados calculados para exibir no template
@@ -831,20 +869,20 @@ def visualizar_cliente(cliente_id):
                     'numero': parcela_dict['numero_parcela'],
                     'vencimento': parcela_dict['data_vencimento'],
                     'valor_original': parcela_dict['valor'],
-                    'multa': parcela_dict['multa_calculada'],
+                    'multa_manual': parcela_dict['multa_manual'],
                     'valor_atualizado': parcela_dict['valor_atualizado'],
                     'status': parcela_dict['status'],
                     'id': parcela_dict['id']
                 })
 
-            # Adiciona atributos dinâmicos à cobrança para exibição
-            cobranca_dict['multa_total_calculada'] = multa_total_cobranca
-            cobranca_dict['saldo_devedor_calculado'] = saldo_devedor_cobranca
+            # Adiciona atributos dinâmicos à cobrança para exibição consistente
+            cobranca_dict['multa_aplicada'] = 0  # Multas agora são por parcela
+            cobranca_dict['saldo_devedor_calculado'] = saldo_devedor_cobranca - (cobranca_dict['valor_pago'] or 0)
             
             # Para compatibilidade com template existente
-            cobranca_dict['valor_multa'] = multa_total_cobranca
-            cobranca_dict['total_a_pagar'] = (cobranca_dict['valor_total'] or cobranca_dict['valor_original']) + multa_total_cobranca
-            cobranca_dict['saldo_devedor'] = cobranca_dict['saldo_devedor_calculado'] - (cobranca_dict['valor_pago'] or 0)
+            cobranca_dict['valor_multa'] = 0  # Multas agora são por parcela
+            cobranca_dict['total_a_pagar'] = cobranca_dict['saldo_devedor_calculado']
+            cobranca_dict['saldo_devedor'] = cobranca_dict['saldo_devedor_calculado']
             
             cobrancas_processadas.append(cobranca_dict)
     
@@ -1188,6 +1226,7 @@ def registrar_pagamento(id):
     flash(f'Pagamento de R$ {valor_a_pagar:.2f} registrado com sucesso.', 'info')
     return redirect(url_for('visualizar_cliente', cliente_id=cobranca['cliente_id']))
 
+
 @app.route('/cobranca/<int:cobranca_id>/pagamentos')
 @login_required
 def visualizar_pagamentos_cobranca(cobranca_id):
@@ -1301,6 +1340,61 @@ def marcar_parcela_paga(id):
         cur.close()
         conn.close()
     
+    return redirect(url_for('visualizar_cliente', cliente_id=parcela['cliente_id']))
+
+@app.route('/parcela/<int:id>/editar_multa', methods=['POST'])
+@login_required
+def editar_multa_parcela(id):
+    """Edita a multa manual de uma parcela."""
+    conn = get_db()
+    cur = conn.cursor(row_factory=dict_row)
+    
+    # Buscar parcela e cobrança relacionada
+    cur.execute('''
+        SELECT p.*, c.cliente_id
+        FROM parcelas p
+        JOIN cobrancas c ON p.cobranca_id = c.id
+        WHERE p.id = %s
+    ''', (id,))
+    parcela = cur.fetchone()
+    
+    if not parcela:
+        flash('Parcela não encontrada.', 'danger')
+        cur.close()
+        conn.close()
+        return redirect(url_for('index'))
+    
+    multa_input = request.form.get('multa_manual_parcela')
+
+    try:
+        if multa_input and multa_input.strip() != '':
+            multa_valor = float(multa_input)
+            if multa_valor < 0:
+                flash('O valor da multa manual não pode ser negativo.', 'danger')
+            else:
+                cur.execute('''
+                    UPDATE parcelas 
+                    SET multa_manual=%s, atualizado_em=CURRENT_TIMESTAMP
+                    WHERE id=%s
+                ''', (multa_valor, id))
+                flash(f'Multa manual de R$ {multa_valor:.2f} definida para a parcela {parcela["numero_parcela"]}.', 'success')
+        else: 
+            cur.execute('''
+                UPDATE parcelas 
+                SET multa_manual=NULL, atualizado_em=CURRENT_TIMESTAMP
+                WHERE id=%s
+            ''', (id,))
+            flash(f'Multa manual removida da parcela {parcela["numero_parcela"]}.', 'info')
+
+        conn.commit()
+    except ValueError:
+        flash('Valor da multa inválido. Por favor, insira um número.', 'danger')
+    except Exception as e:
+        flash(f'Erro ao atualizar multa: {str(e)}', 'danger')
+    finally:
+        cur.close()
+        conn.close()
+
     return redirect(url_for('visualizar_cliente', cliente_id=parcela['cliente_id']))
 
 @app.route('/cobrancas/editar/<int:id>', methods=['GET', 'POST'])
@@ -1590,12 +1684,16 @@ def api_relatorios_kpis():
     
     saldo_devedor_total = 0
     for cobranca in cobrancas_abertas:
-        total_devido_cobranca = cobranca['valor_total'] or cobranca['valor_original']
-        if hoje > cobranca['data_vencimento']:
-            dias_atraso = (hoje - cobranca['data_vencimento']).days
-            total_devido_cobranca += dias_atraso * 40.00
+        # Buscar parcelas pendentes desta cobrança
+        cur.execute('''
+            SELECT * FROM parcelas 
+            WHERE cobranca_id = %s AND status = 'Pendente'
+        ''', (cobranca['id'],))
+        parcelas_pendentes = cur.fetchall()
         
-        saldo_devedor_total += (total_devido_cobranca - (cobranca['valor_pago'] or 0))
+        for parcela in parcelas_pendentes:
+            valor_parcela_atualizado = parcela['valor'] + (parcela['multa_manual'] or 0)
+            saldo_devedor_total += valor_parcela_atualizado
     
     # Calcular total recebido no mês atual
     cur.execute("SELECT COALESCE(SUM(valor_pago), 0) as total FROM pagamentos WHERE data_pagamento >= %s", (primeiro_dia_mes,))
