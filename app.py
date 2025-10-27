@@ -90,6 +90,7 @@ def init_db():
                 telefone_referencia TEXT NOT NULL,
                 endereco_referencia TEXT NOT NULL,
                 observacoes TEXT,
+                empresa TEXT NOT NULL,
                 criado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 atualizado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
@@ -258,6 +259,7 @@ def init_db():
             cur.execute('ALTER TABLE clientes ADD COLUMN IF NOT EXISTS endereco_referencia TEXT')
             cur.execute('ALTER TABLE clientes ADD COLUMN IF NOT EXISTS chave_pix TEXT')
             cur.execute('ALTER TABLE clientes ADD COLUMN IF NOT EXISTS rg TEXT')
+            cur.execute('ALTER TABLE clientes ADD COLUMN IF NOT EXISTS empresa TEXT DEFAULT \'FH1\'')
             cur.execute('ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS nivel TEXT DEFAULT \'Operador\'')
             conn.commit()
         except Exception as e:
@@ -492,6 +494,41 @@ def index():
     cur.execute("SELECT COALESCE(SUM(valor_pago), 0) as total FROM pagamentos WHERE data_pagamento >= %s", (primeiro_dia_mes,))
     total_recebido_mes = cur.fetchone()['total']
     
+    # Calcular KPIs por empresa
+    empresas = ['FH1', 'FH2', 'FH3', 'FH4']
+    kpis_por_empresa = {}
+    
+    for emp in empresas:
+        # Clientes por empresa
+        cur.execute('SELECT COUNT(*) as count FROM clientes WHERE empresa = %s', (emp,))
+        total_clientes_emp = cur.fetchone()['count']
+        
+        # Saldo Devedor por empresa
+        cur.execute('''
+            SELECT cob.id, cob.cliente_id 
+            FROM cobrancas cob
+            JOIN clientes cl ON cob.cliente_id = cl.id
+            WHERE cl.empresa = %s AND cob.status != 'Pago'
+        ''', (emp,))
+        cobrancas_abertas_emp = cur.fetchall()
+        
+        saldo_devedor_emp = 0
+        for cobranca_emp in cobrancas_abertas_emp:
+            cur.execute('''
+                SELECT * FROM parcelas 
+                WHERE cobranca_id = %s AND status = 'Pendente'
+            ''', (cobranca_emp['id'],))
+            parcelas_pendentes_emp = cur.fetchall()
+            
+            for parcela_emp in parcelas_pendentes_emp:
+                valor_parcela_atualizado_emp = parcela_emp['valor'] + (parcela_emp['multa_manual'] or 0)
+                saldo_devedor_emp += valor_parcela_atualizado_emp
+        
+        kpis_por_empresa[emp] = {
+            'total_clientes': total_clientes_emp,
+            'saldo_devedor': saldo_devedor_emp
+        }
+    
     stats = {
         'total_clientes': total_clientes,
         'cobrancas_pendentes': cobrancas_pendentes,
@@ -499,6 +536,7 @@ def index():
         'cobrancas_pagas': cobrancas_pagas,
         'saldo_devedor_total': saldo_devedor_total,
         'total_recebido_mes': total_recebido_mes,
+        'kpis_por_empresa': kpis_por_empresa,
     }
     
     # Cobranças recentes com informações do cliente
@@ -713,7 +751,8 @@ def adicionar_cliente():
             'referencia': request.form.get('referencia', ''),
             'telefone_referencia': request.form.get('telefone_referencia', ''),
             'endereco_referencia': request.form.get('endereco_referencia', ''),
-            'observacoes': request.form.get('observacoes', '')
+            'observacoes': request.form.get('observacoes', ''),
+            'empresa': request.form.get('empresa', 'FH1')
         }
         
         # Validação
@@ -761,13 +800,17 @@ def adicionar_cliente():
             flash('CPF/CNPJ inválido.', 'danger')
             return render_template('cliente_form.html', cliente=dados)
         
+        if not dados['empresa']:
+            flash('Empresa é obrigatória.', 'danger')
+            return render_template('cliente_form.html', cliente=dados)
+        
         conn = get_db()
         cur = conn.cursor()
         try:
             cur.execute('''
                 INSERT INTO clientes (nome, cpf_cnpj, rg, email, telefone, telefone_secundario, chave_pix,
-                                    endereco, cidade, estado, cep, referencia, telefone_referencia, endereco_referencia, observacoes)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                                    endereco, cidade, estado, cep, referencia, telefone_referencia, endereco_referencia, observacoes, empresa)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 RETURNING id
             ''', tuple(dados.values()))
             novo_cliente_id = cur.fetchone()[0]
@@ -924,7 +967,8 @@ def editar_cliente(cliente_id):
             'referencia': request.form.get('referencia', ''),
             'telefone_referencia': request.form.get('telefone_referencia', ''),
             'endereco_referencia': request.form.get('endereco_referencia', ''),
-            'observacoes': request.form.get('observacoes', '')
+            'observacoes': request.form.get('observacoes', ''),
+            'empresa': request.form.get('empresa', 'FH1')
         }
         
         # Validação
@@ -994,16 +1038,22 @@ def editar_cliente(cliente_id):
             conn.close()
             return render_template('cliente_form.html', cliente=dados)
         
+        if not dados['empresa']:
+            flash('Empresa é obrigatória.', 'danger')
+            cur.close()
+            conn.close()
+            return render_template('cliente_form.html', cliente=dados)
+        
         try:
             cur.execute('''
                 UPDATE clientes 
                 SET nome=%s, cpf_cnpj=%s, rg=%s, email=%s, telefone=%s, telefone_secundario=%s, chave_pix=%s,
-                    endereco=%s, cidade=%s, estado=%s, cep=%s, referencia=%s, telefone_referencia=%s, endereco_referencia=%s, observacoes=%s,
+                    endereco=%s, cidade=%s, estado=%s, cep=%s, referencia=%s, telefone_referencia=%s, endereco_referencia=%s, observacoes=%s, empresa=%s,
                     atualizado_em=CURRENT_TIMESTAMP
                 WHERE id=%s
             ''', (dados['nome'], dados['cpf_cnpj'], dados['rg'], dados['email'], dados['telefone'], 
                  dados['telefone_secundario'], dados['chave_pix'], dados['endereco'], dados['cidade'], 
-                 dados['estado'], dados['cep'], dados['referencia'], dados['telefone_referencia'], dados['endereco_referencia'], dados['observacoes'], cliente_id))
+                 dados['estado'], dados['cep'], dados['referencia'], dados['telefone_referencia'], dados['endereco_referencia'], dados['observacoes'], dados['empresa'], cliente_id))
 
             # Processar uploads de documentos (se houver)
             files = request.files.getlist('documentos')

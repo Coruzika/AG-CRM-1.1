@@ -389,6 +389,18 @@
                         </div>
 
                         <div class="form-group">
+                            <label for="empresa">Empresa <span class="required">*</span></label>
+                            <select id="empresa" name="empresa" required>
+                                <option value="" disabled {{ 'selected' if not cliente or not cliente.empresa else '' }}>Selecione a Empresa</option>
+                                <option value="FH1" {{ 'selected' if cliente and cliente.empresa == 'FH1' else '' }}>FH1</option>
+                                <option value="FH2" {{ 'selected' if cliente and cliente.empresa == 'FH2' else '' }}>FH2</option>
+                                <option value="FH3" {{ 'selected' if cliente and cliente.empresa == 'FH3' else '' }}>FH3</option>
+                                <option value="FH4" {{ 'selected' if cliente and cliente.empresa == 'FH4' else '' }}>FH4</option>
+                            </select>
+                            <div class="error-message" id="empresa-error"></div>
+                        </div>
+
+                        <div class="form-group">
                             <label for="email">E-mail</label>
                             <input type="email" id="email" name="email" value="{{ cliente.email if cliente else '' }}" placeholder="exemplo@email.com">
                             <div class="error-message" id="email-error"></div>
@@ -631,6 +643,12 @@
             const cep = document.getElementById('cep').value.trim();
             if (!cep) {
                 errors.cep = 'CEP é obrigatório';
+                isValid = false;
+            }
+
+            const empresa = document.getElementById('empresa').value.trim();
+            if (!empresa) {
+                errors.empresa = 'Empresa é obrigatória';
                 isValid = false;
             }
 
@@ -916,6 +934,27 @@
                 } else {
                     this.closest('.form-group').classList.remove('error');
                     const errorMsg = document.getElementById('cep-error');
+                    if (errorMsg) {
+                        errorMsg.textContent = '';
+                    }
+                }
+            });
+
+            document.getElementById('empresa').addEventListener('blur', function() {
+                const empresa = this.value.trim();
+                if (!empresa) {
+                    this.closest('.form-group').classList.add('error');
+                    let errorMsg = document.getElementById('empresa-error');
+                    if (!errorMsg) {
+                        errorMsg = document.createElement('div');
+                        errorMsg.className = 'error-message';
+                        errorMsg.id = 'empresa-error';
+                        this.closest('.form-group').appendChild(errorMsg);
+                    }
+                    errorMsg.textContent = 'Empresa é obrigatória';
+                } else {
+                    this.closest('.form-group').classList.remove('error');
+                    const errorMsg = document.getElementById('empresa-error');
                     if (errorMsg) {
                         errorMsg.textContent = '';
                     }
