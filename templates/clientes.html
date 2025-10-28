@@ -448,6 +448,23 @@
                    Com Pagamentos Atrasados
                 </a>
             </div>
+
+            <!-- Filtro por Empresa -->
+            <div class="mb-3">
+                <strong>Filtrar por Empresa:</strong>
+                <a href="{{ url_for('listar_clientes', status=filtro_ativo) }}"
+                   class="btn btn-sm {{ 'btn-secondary' if not filtro_empresa else 'btn-outline-secondary' }}"
+                   style="margin-left: 10px;">
+                   Todas
+                </a>
+                {% for emp in ['FH1', 'FH2', 'FH3', 'FH4'] %}
+                <a href="{{ url_for('listar_clientes', status=filtro_ativo, empresa=emp) }}"
+                   class="btn btn-sm {{ 'btn-dark' if filtro_empresa == emp else 'btn-outline-dark' }}"
+                   style="margin-left: 5px;">
+                   {{ emp }}
+                </a>
+                {% endfor %}
+            </div>
             
             <div class="filters-row">
                 <div class="filter-group">
@@ -522,6 +539,7 @@
                             <th>Localização</th>
                             <th>Cobranças</th>
                             <th>Pendências</th>
+                            <th>Empresa</th>
                             <th>Saldo Devedor</th>
                             <th>Ações</th>
                         </tr>
@@ -580,6 +598,9 @@
                                 {% else %}
                                     <span class="badge active">0</span>
                                 {% endif %}
+                            </td>
+                            <td>
+                                {{ cliente.empresa or '-' }}
                             </td>
                             <td>
                                 {% if cliente.saldo_devedor_total > 0 %}

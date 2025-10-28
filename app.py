@@ -4,7 +4,7 @@ import os
 import sys
 import io
 import csv
-from flask import Flask, render_template, request, redirect, url_for, flash, session, Response, jsonify, send_from_directory
+from flask import Flask, render_template, request, redirect, url_for, flash, session, Response, jsonify, send_from_directory, abort
 from datetime import datetime, timedelta, date
 from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.utils import secure_filename
@@ -631,97 +631,80 @@ def index():
 @app.route('/clientes')
 @login_required
 def listar_clientes():
-    """Lista todos os clientes cadastrados."""
+    """Lista clientes com filtros por status e empresa."""
     hoje = date.today()
-    
-    # Verifica se o filtro está ativo
-    filtro_status = request.args.get('status', 'todos')  # 'todos' ou 'atrasado'
-    
+
+    filtro_status = request.args.get('status', 'todos')
+    filtro_empresa = request.args.get('empresa')
+
     conn = get_db()
     cur = conn.cursor(row_factory=dict_row)
-    
-    if filtro_status == 'atrasado':
-        # Busca apenas clientes com cobranças vencidas e não pagas
-        cur.execute('''
-            SELECT DISTINCT
-                c.*,
-                COALESCE(agg.total_cobrancas, 0) AS total_cobrancas,
-                COALESCE(agg.cobrancas_pendentes, 0) AS cobrancas_pendentes,
-                COALESCE(agg.valor_pendente, 0) AS valor_pendente
-            FROM clientes c
-            INNER JOIN cobrancas cob ON cob.cliente_id = c.id
-            LEFT JOIN (
-                SELECT 
-                    cliente_id,
-                    COUNT(id) AS total_cobrancas,
-                    SUM(CASE WHEN status = 'Pendente' THEN 1 ELSE 0 END) AS cobrancas_pendentes,
-                    SUM(CASE WHEN status = 'Pendente' THEN valor_original ELSE 0 END) AS valor_pendente
-                FROM cobrancas
-                GROUP BY cliente_id
-            ) agg ON agg.cliente_id = c.id
-            WHERE cob.data_vencimento < %s 
-            AND cob.status != 'Pago'
-            ORDER BY c.nome ASC
-        ''', (hoje,))
-    else:
-        # Busca todos os clientes
-        cur.execute('''
+
+    base_query = '''
+        SELECT 
+            c.*,
+            COALESCE(agg.total_cobrancas, 0) AS total_cobrancas,
+            COALESCE(agg.cobrancas_pendentes, 0) AS cobrancas_pendentes,
+            COALESCE(agg.valor_pendente, 0) AS valor_pendente
+        FROM clientes c
+        LEFT JOIN (
             SELECT 
-                c.*,
-                COALESCE(agg.total_cobrancas, 0) AS total_cobrancas,
-                COALESCE(agg.cobrancas_pendentes, 0) AS cobrancas_pendentes,
-                COALESCE(agg.valor_pendente, 0) AS valor_pendente
-            FROM clientes c
-            LEFT JOIN (
-                SELECT 
-                    cliente_id,
-                    COUNT(id) AS total_cobrancas,
-                    SUM(CASE WHEN status = 'Pendente' THEN 1 ELSE 0 END) AS cobrancas_pendentes,
-                    SUM(CASE WHEN status = 'Pendente' THEN valor_original ELSE 0 END) AS valor_pendente
-                FROM cobrancas
-                GROUP BY cliente_id
-            ) agg ON agg.cliente_id = c.id
-            ORDER BY c.nome ASC
-        ''')
-    
+                cliente_id,
+                COUNT(id) AS total_cobrancas,
+                SUM(CASE WHEN status = 'Pendente' THEN 1 ELSE 0 END) AS cobrancas_pendentes,
+                SUM(CASE WHEN status = 'Pendente' THEN valor_original ELSE 0 END) AS valor_pendente
+            FROM cobrancas
+            GROUP BY cliente_id
+        ) agg ON agg.cliente_id = c.id
+    '''
+
+    conditions = []
+    params = []
+
+    if filtro_empresa:
+        conditions.append('c.empresa = %s')
+        params.append(filtro_empresa)
+
+    if filtro_status == 'atrasado':
+        conditions.append('EXISTS (SELECT 1 FROM cobrancas cob WHERE cob.cliente_id = c.id AND cob.data_vencimento < %s AND cob.status != \"Pago\")')
+        params.append(hoje)
+
+    if conditions:
+        base_query += ' WHERE ' + ' AND '.join(conditions)
+
+    base_query += ' ORDER BY c.nome ASC'
+
+    cur.execute(base_query, tuple(params))
     clientes = cur.fetchall()
-    
+
     # Nova lógica de cálculo por parcela
-    hoje = date.today()
-    
     for cliente in clientes:
         saldo_devedor_cliente = 0
-        # Buscar todas as cobranças não pagas do cliente
         cur.execute('''
-            SELECT * FROM cobrancas 
+            SELECT id FROM cobrancas 
             WHERE cliente_id = %s AND status != 'Pago'
         ''', (cliente['id'],))
         cobrancas_abertas = cur.fetchall()
 
         for cobranca in cobrancas_abertas:
-            # Buscar parcelas pendentes desta cobrança
             cur.execute('''
-                SELECT * FROM parcelas 
+                SELECT valor, multa_manual FROM parcelas 
                 WHERE cobranca_id = %s AND status = 'Pendente'
             ''', (cobranca['id'],))
             parcelas_pendentes = cur.fetchall()
-            
+
             for parcela in parcelas_pendentes:
                 valor_parcela_atualizado = parcela['valor'] + (parcela['multa_manual'] or 0)
                 saldo_devedor_cliente += valor_parcela_atualizado
-            
-            # Se não há parcelas pendentes, usar valor original da cobrança
-            if not parcelas_pendentes:
-                saldo_devedor_cliente += cobranca['valor_original']
 
-        # Adiciona o valor calculado dinamicamente ao objeto do cliente
         cliente['saldo_devedor_total'] = saldo_devedor_cliente
-    
+
     cur.close()
     conn.close()
-    
-    # Passa o status do filtro para o template
-    return render_template('clientes.html', clientes=clientes, filtro_ativo=filtro_status)
+
+    return render_template('clientes.html', clientes=clientes, 
+                           filtro_ativo=filtro_status,
+                           filtro_empresa=filtro_empresa)
 
 
 
@@ -1690,10 +1673,33 @@ def api_eventos():
     return jsonify(eventos)
 
 # --- Rota para servir uploads ---
-@app.route('/uploads/<int:cliente_id>/<path:filename>')
+@app.route('/uploads/<int:cliente_id>/<filename>')
 @login_required
 def uploaded_file(cliente_id, filename):
-    return send_from_directory(os.path.join(app.config['UPLOAD_FOLDER'], str(cliente_id)), filename)
+    # Constrói o caminho absoluto para a pasta de uploads DO CLIENTE específico
+    directory = os.path.abspath(os.path.join(app.config['UPLOAD_FOLDER'], str(cliente_id)))
+    file_path = os.path.join(directory, filename)
+    
+    # DEBUG: Imprime o caminho completo que está a tentar aceder
+    print(f"--- DEBUG: A tentar servir o ficheiro: {file_path} ---")
+    
+    # Verifica se o diretório existe
+    if not os.path.isdir(directory):
+        print(f"--- DEBUG ERROR: Diretório não encontrado: {directory} ---")
+        abort(404)
+    
+    # Verifica se o ficheiro existe
+    if not os.path.isfile(file_path):
+        print(f"--- DEBUG ERROR: Ficheiro não encontrado: {file_path} ---")
+        abort(404)
+    
+    # Tenta servir o ficheiro a partir desse diretório
+    try:
+        print(f"--- DEBUG SUCCESS: A servir {filename} de {directory} ---")
+        return send_from_directory(directory, filename, as_attachment=False)
+    except Exception as e:
+        print(f"--- DEBUG ERROR: Erro ao servir ficheiro: {e} ---")
+        abort(500)
 
 
 
