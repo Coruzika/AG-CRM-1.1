@@ -496,16 +496,14 @@
                     const date = new Date(year, month, day);
                     const isToday = date.toDateString() === today.toDateString();
                     const isSunday = date.getDay() === 0;
-                    const isPast = date < today.setHours(0, 0, 0, 0);
                     const isSelected = this.selectedDate && date.toDateString() === this.selectedDate.toDateString();
                     
                     let classes = 'datepicker-day';
                     if (isToday) classes += ' today';
                     if (isSelected) classes += ' selected';
                     if (isSunday) classes += ' sunday disabled';
-                    if (isPast) classes += ' disabled';
                     
-                    const clickHandler = (isSunday || isPast) ? '' : `onclick="datepicker.selectDate(${year}, ${month}, ${day})"`;
+                    const clickHandler = (isSunday) ? '' : `onclick="datepicker.selectDate(${year}, ${month}, ${day})"`;
                     
                     days += `<div class="${classes}" ${clickHandler}>${day}</div>`;
                 }
