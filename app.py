@@ -666,8 +666,10 @@ def listar_clientes():
         params.append(filtro_empresa)
 
     if filtro_status == 'atrasado':
-        conditions.append('EXISTS (SELECT 1 FROM cobrancas cob WHERE cob.cliente_id = c.id AND cob.data_vencimento < %s AND cob.status != \"Pago\")')
+        # Buscar clientes com parcelas vencidas e pendentes (similar ao dashboard)
+        conditions.append('EXISTS (SELECT 1 FROM cobrancas cob INNER JOIN parcelas p ON p.cobranca_id = cob.id WHERE cob.cliente_id = c.id AND p.data_vencimento < %s AND p.status = %s)')
         params.append(hoje)
+        params.append('Pendente')
 
     if conditions:
         base_query += ' WHERE ' + ' AND '.join(conditions)
@@ -713,11 +715,7 @@ def listar_clientes():
 def adicionar_cliente():
     """Adiciona um novo cliente."""
     if request.method == 'POST':
-        # Verificação: pelo menos um documento deve ser anexado
         files = request.files.getlist('documentos')
-        if not files or (len(files) == 1 and (not files[0] or files[0].filename == '')):
-            flash('É obrigatório anexar pelo menos um documento.', 'danger')
-            return render_template('cliente_form.html', cliente=None)
 
         dados = {
             'nome': request.form['nome'],

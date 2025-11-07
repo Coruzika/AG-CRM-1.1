@@ -107,6 +107,39 @@
             transform: translateY(-1px);
         }
 
+        .btn-dark {
+            background: #2d3748;
+            color: white;
+            border: 1px solid #2d3748;
+            padding: 8px 12px;
+            border-radius: 5px;
+            text-decoration: none;
+            display: inline-block;
+            transition: all 0.3s;
+        }
+
+        .btn-dark:hover {
+            background: #1a202c;
+            transform: translateY(-1px);
+        }
+
+        .btn-outline-dark {
+            background: transparent;
+            color: #2d3748;
+            border: 1px solid #2d3748;
+            padding: 8px 12px;
+            border-radius: 5px;
+            text-decoration: none;
+            display: inline-block;
+            transition: all 0.3s;
+        }
+
+        .btn-outline-dark:hover {
+            background: #2d3748;
+            color: white;
+            transform: translateY(-1px);
+        }
+
         .btn-danger {
             background: #f56565;
             color: white;
@@ -437,12 +470,12 @@
             <!-- Filtro de Status de Pagamento -->
             <div class="mb-3" style="margin-bottom: 20px;">
                 <strong>Filtrar por:</strong>
-                <a href="{{ url_for('listar_clientes', status='todos') }}" 
+                <a href="{{ url_for('listar_clientes', status='todos', empresa=filtro_empresa) if filtro_empresa else url_for('listar_clientes', status='todos') }}" 
                    class="btn btn-sm {{ 'btn-primary' if filtro_ativo == 'todos' else 'btn-outline-primary' }}"
                    style="margin-left: 10px;">
                    Todos os Clientes
                 </a>
-                <a href="{{ url_for('listar_clientes', status='atrasado') }}" 
+                <a href="{{ url_for('listar_clientes', status='atrasado', empresa=filtro_empresa) if filtro_empresa else url_for('listar_clientes', status='atrasado') }}" 
                    class="btn btn-sm {{ 'btn-danger' if filtro_ativo == 'atrasado' else 'btn-outline-danger' }}"
                    style="margin-left: 5px;">
                    Com Pagamentos Atrasados
@@ -452,13 +485,13 @@
             <!-- Filtro por Empresa -->
             <div class="mb-3">
                 <strong>Filtrar por Empresa:</strong>
-                <a href="{{ url_for('listar_clientes', status=filtro_ativo) }}"
+                <a href="{{ url_for('listar_clientes', status=filtro_ativo) if filtro_ativo != 'todos' else url_for('listar_clientes') }}"
                    class="btn btn-sm {{ 'btn-secondary' if not filtro_empresa else 'btn-outline-secondary' }}"
                    style="margin-left: 10px;">
                    Todas
                 </a>
                 {% for emp in ['FH1', 'FH2', 'FH3', 'FH4'] %}
-                <a href="{{ url_for('listar_clientes', status=filtro_ativo, empresa=emp) }}"
+                <a href="{{ url_for('listar_clientes', status=filtro_ativo, empresa=emp) if filtro_ativo != 'todos' else url_for('listar_clientes', empresa=emp) }}"
                    class="btn btn-sm {{ 'btn-dark' if filtro_empresa == emp else 'btn-outline-dark' }}"
                    style="margin-left: 5px;">
                    {{ emp }}
@@ -534,12 +567,12 @@
                         <tr>
                             <th>Cliente</th>
                             <th>CPF/CNPJ</th>
+                            <th>Empresa</th>
                             <th>Contato</th>
                             <th>Referência</th>
                             <th>Localização</th>
                             <th>Cobranças</th>
                             <th>Pendências</th>
-                            <th>Empresa</th>
                             <th>Saldo Devedor</th>
                             <th>Ações</th>
                         </tr>
@@ -558,6 +591,13 @@
                                     {{ cliente.cpf_cnpj }}
                                 {% else %}
                                     <span style="color: #999;">Não informado</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                {% if cliente.empresa %}
+                                    <strong style="color: #667eea;">{{ cliente.empresa }}</strong>
+                                {% else %}
+                                    <span style="color: #999;">-</span>
                                 {% endif %}
                             </td>
                             <td>
@@ -598,9 +638,6 @@
                                 {% else %}
                                     <span class="badge active">0</span>
                                 {% endif %}
-                            </td>
-                            <td>
-                                {{ cliente.empresa or '-' }}
                             </td>
                             <td>
                                 {% if cliente.saldo_devedor_total > 0 %}
