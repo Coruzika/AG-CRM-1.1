@@ -1514,38 +1514,116 @@ def editar_cobranca(id):
         return redirect(url_for('index'))
     
     if request.method == 'POST':
-        # Obter novo valor do formulário
-        novo_valor_devido = request.form.get('valor_devido')
-        if not novo_valor_devido:
-            flash('Valor devido é obrigatório.', 'danger')
-            cur.close()
-            conn.close()
-            return render_template('cobranca_form.html', cobranca=cobranca, cliente=cliente)
-        
         try:
-            valor_devido_float = float(novo_valor_devido)
-            if valor_devido_float <= 0:
-                flash('Valor devido deve ser maior que zero.', 'danger')
+            # Obter dados do formulário
+            valor_emprestimo_str = request.form.get('valor_emprestimo')
+            if not valor_emprestimo_str:
+                flash('Valor emprestado é obrigatório.', 'danger')
                 cur.close()
                 conn.close()
                 return render_template('cobranca_form.html', cobranca=cobranca, cliente=cliente)
-        except ValueError:
-            flash('Valor devido deve ser um número válido.', 'danger')
+            
+            novo_valor_emprestimo = float(valor_emprestimo_str)
+            if novo_valor_emprestimo <= 0:
+                flash('Valor emprestado deve ser maior que zero.', 'danger')
+                cur.close()
+                conn.close()
+                return render_template('cobranca_form.html', cobranca=cobranca, cliente=cliente)
+            
+            nova_data_vencimento_str = request.form.get('data_vencimento')
+            if not nova_data_vencimento_str:
+                flash('Data de vencimento é obrigatória.', 'danger')
+                cur.close()
+                conn.close()
+                return render_template('cobranca_form.html', cobranca=cobranca, cliente=cliente)
+            
+            # Validar formato da data (YYYY-MM-DD)
+            nova_data_vencimento = datetime.strptime(nova_data_vencimento_str, '%Y-%m-%d').date()
+            
+            # Validar se a data não é domingo
+            if nova_data_vencimento.weekday() == 6:  # 6 = Domingo
+                flash('Domingos não são permitidos para data de vencimento. Selecione outro dia.', 'danger')
+                cur.close()
+                conn.close()
+                return render_template('cobranca_form.html', cobranca=cobranca, cliente=cliente)
+            
+            # Obter taxa de juros do formulário (ou usar a existente se não fornecida)
+            taxa_juros_str = request.form.get('taxa_juros')
+            if taxa_juros_str:
+                taxa_juros = float(taxa_juros_str)
+            else:
+                taxa_juros = cobranca['taxa_juros']
+            
+            if not taxa_juros:
+                flash('Taxa de juros é obrigatória.', 'danger')
+                cur.close()
+                conn.close()
+                return render_template('cobranca_form.html', cobranca=cobranca, cliente=cliente)
+            
+            # Determinar número de parcelas baseado na taxa de juros
+            if taxa_juros == 30:
+                numero_parcelas = 10
+            elif taxa_juros == 60:
+                numero_parcelas = 15
+            else:
+                flash('Taxa de juros inválida. Use 30% ou 60%.', 'danger')
+                cur.close()
+                conn.close()
+                return render_template('cobranca_form.html', cobranca=cobranca, cliente=cliente)
+            
+            # Calcular valor total com juros
+            valor_total = novo_valor_emprestimo * (1 + (taxa_juros / 100))
+            valor_parcela = valor_total / numero_parcelas
+            
+            # Apagar todas as parcelas antigas associadas a esta cobrança
+            cur.execute('DELETE FROM parcelas WHERE cobranca_id = %s', (id,))
+            
+            # Apagar histórico de pagamentos da cobrança (já que as parcelas foram apagadas)
+            cur.execute('DELETE FROM historico_pagamentos WHERE cobranca_id = %s', (id,))
+            
+            # Re-gerar as parcelas diárias com a nova data inicial
+            data_vencimento_atual = nova_data_vencimento
+            
+            for i in range(numero_parcelas):
+                # Pular domingos
+                while data_vencimento_atual.weekday() == 6:  # 6 = domingo
+                    data_vencimento_atual += timedelta(days=1)
+                
+                # Criar a parcela
+                cur.execute('''
+                    INSERT INTO parcelas (cobranca_id, numero_parcela, valor, data_vencimento, status)
+                    VALUES (%s, %s, %s, %s, %s)
+                ''', (id, i + 1, valor_parcela, data_vencimento_atual, 'Pendente'))
+                
+                # Incrementar para a próxima parcela (próximo dia)
+                data_vencimento_atual += timedelta(days=1)
+            
+            # Atualizar a cobrança principal
+            # Obter a data da última parcela para atualizar data_vencimento da cobrança
+            ultima_data_vencimento = data_vencimento_atual - timedelta(days=1)
+            
+            cur.execute('''
+                UPDATE cobrancas 
+                SET valor_original=%s, valor_total=%s, taxa_juros=%s, data_vencimento=%s, 
+                    numero_parcelas=%s, valor_pago=0, status='Pendente', atualizado_em=CURRENT_TIMESTAMP
+                WHERE id=%s
+            ''', (novo_valor_emprestimo, valor_total, taxa_juros, nova_data_vencimento, numero_parcelas, id))
+            
+            # Confirmar transação
+            conn.commit()
+            
+            flash(f'Cobrança atualizada com sucesso! {numero_parcelas} parcelas foram re-geradas a partir da nova data.', 'success')
+            
+        except ValueError as e:
+            conn.rollback()
+            flash(f'Erro ao processar dados: {str(e)}', 'danger')
+        except Exception as e:
+            conn.rollback()
+            flash(f'Erro ao atualizar cobrança: {str(e)}', 'danger')
+        finally:
             cur.close()
             conn.close()
-            return render_template('cobranca_form.html', cobranca=cobranca, cliente=cliente)
         
-        # Atualizar o valor_devido na cobrança
-        cur.execute('''
-            UPDATE cobrancas 
-            SET valor_original=%s, atualizado_em=CURRENT_TIMESTAMP
-            WHERE id=%s
-        ''', (valor_devido_float, id))
-        
-        conn.commit()
-        cur.close()
-        conn.close()
-        flash('Cobrança atualizada com sucesso!', 'success')
         return redirect(url_for('visualizar_cliente', cliente_id=cobranca['cliente_id']))
     
     cur.close()

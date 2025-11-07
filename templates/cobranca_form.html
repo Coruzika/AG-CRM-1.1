@@ -344,20 +344,26 @@
 
                     <div class="form-group">
                         <label for="data_vencimento">Data da Primeira Parcela <span class="required">*</span></label>
-                        {% if cobranca %}
-                            <input type="text" value="{{ cobranca.data_vencimento.strftime('%d/%m/%Y') if cobranca.data_vencimento else '' }}" 
-                                   readonly style="background: #f7fafc; color: #666;">
-                        {% else %}
-                            <div class="datepicker-container">
+                        <div class="datepicker-container">
+                            {% if cobranca %}
+                                {% set data_formatada = cobranca.data_vencimento.strftime('%d-%m-%Y') if cobranca.data_vencimento else '' %}
+                                <input type="text" id="data_vencimento" name="data_vencimento" 
+                                       value="{{ data_formatada }}" 
+                                       placeholder="DD-MM-AAAA (domingos não disponíveis)" required readonly>
+                                <div id="datepicker" class="datepicker"></div>
+                            {% else %}
                                 <input type="text" id="data_vencimento" name="data_vencimento" 
                                        value="{{ cobranca.data_vencimento if cobranca else '' }}" 
                                        placeholder="DD-MM-AAAA (domingos não disponíveis)" required readonly>
                                 <div id="datepicker" class="datepicker"></div>
-                            </div>
-                            <small style="color: #666; font-size: 12px; margin-top: 5px; display: block;">
-                                Domingos não estão disponíveis. As parcelas serão geradas diariamente a partir desta data.
-                            </small>
-                        {% endif %}
+                            {% endif %}
+                        </div>
+                        <small style="color: #666; font-size: 12px; margin-top: 5px; display: block;">
+                            Domingos não estão disponíveis. As parcelas serão geradas diariamente a partir desta data.
+                            {% if cobranca %}
+                            <strong style="color: #f56565;">Atenção: Alterar esta data apagará todas as parcelas existentes e criará novas parcelas.</strong>
+                            {% endif %}
+                        </small>
                     </div>
 
                 </div>
@@ -598,12 +604,19 @@
         document.addEventListener('DOMContentLoaded', function() {
             // Convert existing value from backend format to display format
             const dataInput = document.getElementById('data_vencimento');
-            if (dataInput.value && dataInput.value.includes('-') && dataInput.value.split('-')[0].length === 4) {
-                dataInput.value = convertFromBackendFormat(dataInput.value);
-            }
+            if (dataInput) {
+                // If value is in YYYY-MM-DD format (from backend), convert to DD-MM-YYYY
+                if (dataInput.value && dataInput.value.includes('-')) {
+                    const parts = dataInput.value.split('-');
+                    if (parts.length === 3 && parts[0].length === 4) {
+                        // Backend format: YYYY-MM-DD
+                        dataInput.value = convertFromBackendFormat(dataInput.value);
+                    }
+                }
 
-            // Initialize custom datepicker
-            window.datepicker = new CustomDatepicker('data_vencimento', 'datepicker');
+                // Initialize custom datepicker
+                window.datepicker = new CustomDatepicker('data_vencimento', 'datepicker');
+            }
 
             // Add event listeners for real-time calculation
             document.getElementById('valor_emprestimo').addEventListener('input', calcularValorDevido);
