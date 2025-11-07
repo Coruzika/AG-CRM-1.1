@@ -1430,6 +1430,64 @@ def editar_multa_parcela(id):
 
     return redirect(url_for('visualizar_cliente', cliente_id=parcela['cliente_id']))
 
+@app.route('/parcela/<int:id>/editar_data', methods=['POST'])
+@login_required
+def editar_data_parcela(id):
+    """Edita a data de vencimento de uma parcela."""
+    conn = get_db()
+    cur = conn.cursor(row_factory=dict_row)
+    
+    # Buscar parcela e cobrança relacionada
+    cur.execute('''
+        SELECT p.*, c.cliente_id
+        FROM parcelas p
+        JOIN cobrancas c ON p.cobranca_id = c.id
+        WHERE p.id = %s
+    ''', (id,))
+    parcela = cur.fetchone()
+    
+    if not parcela:
+        flash('Parcela não encontrada.', 'danger')
+        cur.close()
+        conn.close()
+        return redirect(url_for('index'))
+    
+    nova_data_str = request.form.get('nova_data_vencimento')
+    
+    if not nova_data_str:
+        flash('Data de vencimento inválida.', 'danger')
+        cur.close()
+        conn.close()
+        return redirect(url_for('visualizar_cliente', cliente_id=parcela['cliente_id']))
+    
+    try:
+        nova_data = datetime.strptime(nova_data_str, '%Y-%m-%d').date()
+        
+        # Validação para não permitir data no domingo (opcional, mas recomendado)
+        if nova_data.weekday() == 6:  # 6 = Domingo
+            flash('A data de vencimento não pode ser num domingo.', 'warning')
+            cur.close()
+            conn.close()
+            return redirect(url_for('visualizar_cliente', cliente_id=parcela['cliente_id']))
+        
+        cur.execute('''
+            UPDATE parcelas 
+            SET data_vencimento=%s, atualizado_em=CURRENT_TIMESTAMP
+            WHERE id=%s
+        ''', (nova_data, id))
+        
+        conn.commit()
+        flash(f'Data de vencimento da parcela {parcela["numero_parcela"]} atualizada para {nova_data.strftime("%d/%m/%Y")}.', 'success')
+    except ValueError:
+        flash('Formato de data inválido.', 'danger')
+    except Exception as e:
+        flash(f'Erro ao atualizar data: {str(e)}', 'danger')
+    finally:
+        cur.close()
+        conn.close()
+    
+    return redirect(url_for('visualizar_cliente', cliente_id=parcela['cliente_id']))
+
 @app.route('/cobrancas/editar/<int:id>', methods=['GET', 'POST'])
 @login_required
 def editar_cobranca(id):

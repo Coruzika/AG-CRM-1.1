@@ -481,6 +481,13 @@
                                                         style="padding: 6px 12px; font-size: 12px; margin-left: 5px;">
                                                     <i class="fas fa-pencil-alt"></i> Multa
                                                 </button>
+                                                <button type="button" class="btn btn-info btn-xs ml-1" data-bs-toggle="modal" data-bs-target="#editarDataParcelaModal"
+                                                        data-parcela-id="{{ parcela_data.id }}"
+                                                        data-parcela-num="{{ parcela_data.numero }}"
+                                                        data-vencimento-atual="{{ parcela_data.vencimento.strftime('%Y-%m-%d') }}"
+                                                        style="padding: 6px 12px; font-size: 12px; margin-left: 5px;">
+                                                    <i class="fas fa-calendar-alt"></i> Data
+                                                </button>
                                                 {% else %}
                                                     <span style="color: #28a745; font-weight: 600; font-size: 12px;">✓ Pago</span>
                                                 {% endif %}
@@ -599,6 +606,31 @@
         </div>
     </div>
 
+    <!-- Modal Editar Data de Vencimento da Parcela -->
+    <div class="modal fade" id="editarDataParcelaModal" tabindex="-1" role="dialog" aria-labelledby="editarDataParcelaModalLabel" aria-hidden="true">
+        <div class="modal-dialog" role="document">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="editarDataParcelaModalLabel">Editar Data de Vencimento</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <form id="editarDataParcelaForm" method="POST" action="">
+                    <div class="modal-body">
+                        <p>Parcela Nº: <strong id="editDataParcelaNum"></strong></p>
+                        <div class="form-group">
+                            <label for="nova_data_vencimento_input">Nova Data de Vencimento</label>
+                            <input type="date" class="form-control" id="nova_data_vencimento_input" name="nova_data_vencimento" required>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                        <button type="submit" class="btn btn-info">Salvar Nova Data</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
     <!-- Modal Registrar Pagamento -->
     <div id="pagamentoModal" class="modal" style="display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.5);">
         <div class="modal-content" style="background-color: white; margin: 5% auto; padding: 30px; border-radius: 10px; width: 90%; max-width: 500px; box-shadow: 0 5px 25px rgba(0,0,0,0.2);">
@@ -708,6 +740,25 @@
                     // Define a action do formulário dinamicamente
                     var form = document.getElementById('editarMultaParcelaForm');
                     form.action = '/parcela/' + parcelaId + '/editar_multa';
+                });
+            }
+
+            // JavaScript para o modal de edição de data da parcela
+            const editarDataParcelaModal = document.getElementById('editarDataParcelaModal');
+            
+            if (editarDataParcelaModal) {
+                editarDataParcelaModal.addEventListener('show.bs.modal', function (event) {
+                    var button = event.relatedTarget;
+                    var parcelaId = button.getAttribute('data-parcela-id');
+                    var parcelaNum = button.getAttribute('data-parcela-num');
+                    var vencimentoAtual = button.getAttribute('data-vencimento-atual');
+
+                    document.getElementById('editDataParcelaNum').textContent = parcelaNum;
+                    document.getElementById('nova_data_vencimento_input').value = vencimentoAtual;
+
+                    // Define a action do formulário dinamicamente
+                    var form = document.getElementById('editarDataParcelaForm');
+                    form.action = '/parcela/' + parcelaId + '/editar_data';
                 });
             }
         });
