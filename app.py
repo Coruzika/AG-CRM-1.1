@@ -1179,31 +1179,39 @@ def adicionar_cobranca():
 @app.route('/cobranca/<int:cobranca_id>/cancelar', methods=['POST'])
 @login_required
 def cancelar_cobranca(cobranca_id):
-    """Cancela uma cobrança."""
+    """DELETA uma cobrança e todos os seus registros associados (parcelas, pagamentos)."""
     conn = get_db()
-    cur = conn.cursor()
+    cur = conn.cursor(row_factory=dict_row) # Usar dict_row para facilitar
     
-    # Verificar se a cobrança existe
-    cur.execute('SELECT id FROM cobrancas WHERE id = %s', (cobranca_id,))
+    # Verificar se a cobrança existe e pegar o cliente_id para redirecionar
+    cur.execute('SELECT id, cliente_id FROM cobrancas WHERE id = %s', (cobranca_id,))
     cobranca = cur.fetchone()
+    
     if not cobranca:
         flash('Cobrança não encontrada.', 'danger')
         cur.close()
         conn.close()
         return redirect(url_for('index'))
     
-    # Atualizar status para cancelada
-    cur.execute('''
-        UPDATE cobrancas 
-        SET status='Cancelada', atualizado_em=CURRENT_TIMESTAMP
-        WHERE id=%s
-    ''', (cobranca_id,))
+    # Armazena o ID do cliente para o redirecionamento
+    cliente_id_redirect = cobranca['cliente_id']
     
-    conn.commit()
-    cur.close()
-    conn.close()
-    flash('Cobrança cancelada com sucesso!', 'success')
-    return redirect(url_for('index'))
+    try:
+        # Deletar a cobrança. O 'ON DELETE CASCADE' cuidará das parcelas e pagamentos.
+        cur.execute('DELETE FROM cobrancas WHERE id = %s', (cobranca_id,))
+        
+        conn.commit()
+        flash('Cobrança e todos os seus dados foram DELETADOS com sucesso!', 'success')
+        
+    except Exception as e:
+        conn.rollback()
+        flash(f'Erro ao deletar cobrança: {str(e)}', 'danger')
+    finally:
+        cur.close()
+        conn.close()
+    
+    # Redireciona de volta para a página do cliente
+    return redirect(url_for('visualizar_cliente', cliente_id=cliente_id_redirect))
 
 @app.route('/cobranca/<int:id>/registrar_pagamento', methods=['POST'])
 @login_required
@@ -1810,27 +1818,30 @@ def api_eventos():
 @app.route('/uploads/<int:cliente_id>/<filename>')
 @login_required
 def uploaded_file(cliente_id, filename):
-    # Constrói o caminho absoluto para a pasta de uploads DO CLIENTE específico
-    directory = os.path.abspath(os.path.join(app.config['UPLOAD_FOLDER'], str(cliente_id)))
-    file_path = os.path.join(directory, filename)
+    # --- CORREÇÃO ---
+    # 1. Obter o caminho absoluto para a pasta 'uploads' usando app.root_path
+    # app.root_path é o caminho absoluto para o diretório onde app.py está
+    uploads_dir = os.path.join(app.root_path, app.config['UPLOAD_FOLDER'])
     
-    # DEBUG: Imprime o caminho completo que está a tentar aceder
+    # 2. Construir o caminho para a pasta específica do cliente
+    client_dir = os.path.join(uploads_dir, str(cliente_id))
+    
+    # 3. Construir o caminho completo para o arquivo
+    file_path = os.path.join(client_dir, filename)
+    
+    # DEBUG: Imprime o caminho completo
     print(f"--- DEBUG: A tentar servir o ficheiro: {file_path} ---")
     
-    # Verifica se o diretório existe
-    if not os.path.isdir(directory):
-        print(f"--- DEBUG ERROR: Diretório não encontrado: {directory} ---")
-        abort(404)
-    
-    # Verifica se o ficheiro existe
+    # 4. Verificar se o arquivo existe
     if not os.path.isfile(file_path):
         print(f"--- DEBUG ERROR: Ficheiro não encontrado: {file_path} ---")
         abort(404)
     
-    # Tenta servir o ficheiro a partir desse diretório
+    # 5. Tenta servir o ficheiro
     try:
-        print(f"--- DEBUG SUCCESS: A servir {filename} de {directory} ---")
-        return send_from_directory(directory, filename, as_attachment=False)
+        # Passamos o diretório absoluto do cliente e o nome do arquivo
+        print(f"--- DEBUG SUCCESS: A servir {filename} de {client_dir} ---")
+        return send_from_directory(client_dir, filename, as_attachment=False)
     except Exception as e:
         print(f"--- DEBUG ERROR: Erro ao servir ficheiro: {e} ---")
         abort(500)
