@@ -474,7 +474,7 @@ def index():
     primeiro_dia_mes = hoje.replace(day=1)
     
     # Buscar todas as cobranças não pagas para calcular o saldo devedor total
-    cur.execute("SELECT * FROM cobrancas WHERE status != 'Pago'")
+    cur.execute("SELECT * FROM cobrancas WHERE status = 'Pendente'")
     cobrancas_abertas = cur.fetchall()
     
     saldo_devedor_total = 0
@@ -508,7 +508,7 @@ def index():
             SELECT cob.id, cob.cliente_id 
             FROM cobrancas cob
             JOIN clientes cl ON cob.cliente_id = cl.id
-            WHERE cl.empresa = %s AND cob.status != 'Pago'
+            WHERE cl.empresa = %s AND cob.status = 'Pendente'
         ''', (emp,))
         cobrancas_abertas_emp = cur.fetchall()
         
@@ -598,7 +598,7 @@ def index():
         saldo_devedor_cliente = 0
         
         # Buscar todas as cobranças não pagas deste cliente
-        cur.execute("SELECT * FROM cobrancas WHERE cliente_id = %s AND status != 'Pago'", (cliente['id'],))
+        cur.execute("SELECT * FROM cobrancas WHERE cliente_id = %s AND status = 'Pendente'", (cliente['id'],))
         cobrancas_abertas = cur.fetchall()
         
         for cobranca in cobrancas_abertas:
@@ -684,7 +684,7 @@ def listar_clientes():
         saldo_devedor_cliente = 0
         cur.execute('''
             SELECT id FROM cobrancas 
-            WHERE cliente_id = %s AND status != 'Pago'
+            WHERE cliente_id = %s AND status = 'Pendente'
         ''', (cliente['id'],))
         cobrancas_abertas = cur.fetchall()
 
@@ -1869,7 +1869,7 @@ def api_relatorios_kpis():
     primeiro_dia_mes = hoje.replace(day=1)
     
     # Buscar todas as cobranças não pagas para calcular o saldo devedor total
-    cur.execute("SELECT * FROM cobrancas WHERE status != 'Pago'")
+    cur.execute("SELECT * FROM cobrancas WHERE status = 'Pendente'")
     cobrancas_abertas = cur.fetchall()
     
     saldo_devedor_total = 0
