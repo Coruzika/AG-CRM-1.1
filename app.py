@@ -465,8 +465,13 @@ def index():
     cur.execute("SELECT COUNT(*) as count FROM cobrancas WHERE status = 'Pendente' AND data_vencimento < CURRENT_DATE")
     cobrancas_vencidas = cur.fetchone()['count']
     
-    cur.execute("SELECT COUNT(*) as count FROM cobrancas WHERE status = 'Pago'")
-    cobrancas_pagas = cur.fetchone()['count']
+    # Contagem correta: Número de parcelas que foram individualmente pagas
+    cur.execute("SELECT COUNT(*) as count FROM parcelas WHERE status = 'Pago'")
+    parcelas_pagas = cur.fetchone()['count']
+    
+    # Total de parcelas para o gráfico
+    cur.execute("SELECT COUNT(*) as count FROM parcelas")
+    total_parcelas = cur.fetchone()['count']
     
     # Nova lógica de cálculo baseada no Saldo Devedor Total por parcela
     from datetime import date
@@ -491,7 +496,8 @@ def index():
             saldo_devedor_total += valor_parcela_atualizado
     
     # Calcular total recebido no mês atual
-    cur.execute("SELECT COALESCE(SUM(valor_pago), 0) as total FROM pagamentos WHERE data_pagamento >= %s", (primeiro_dia_mes,))
+    # Usa historico_pagamentos pois é o log unificado de todos os pagamentos (avulsos e parcelas)
+    cur.execute("SELECT COALESCE(SUM(valor_pago), 0) as total FROM historico_pagamentos WHERE DATE(data_pagamento) >= %s", (primeiro_dia_mes,))
     total_recebido_mes = cur.fetchone()['total']
     
     # Calcular KPIs por empresa
@@ -533,7 +539,8 @@ def index():
         'total_clientes': total_clientes,
         'cobrancas_pendentes': cobrancas_pendentes,
         'cobrancas_vencidas': cobrancas_vencidas,
-        'cobrancas_pagas': cobrancas_pagas,
+        'parcelas_pagas': parcelas_pagas,
+        'total_parcelas': total_parcelas,
         'saldo_devedor_total': saldo_devedor_total,
         'total_recebido_mes': total_recebido_mes,
         'kpis_por_empresa': kpis_por_empresa,
@@ -1871,8 +1878,9 @@ def api_relatorios_kpis():
     cur.execute("SELECT COUNT(*) as count FROM cobrancas WHERE status = 'Pendente' AND data_vencimento < CURRENT_DATE")
     cobrancas_vencidas = cur.fetchone()['count']
     
-    cur.execute("SELECT COUNT(*) as count FROM cobrancas WHERE status = 'Pago'")
-    cobrancas_pagas = cur.fetchone()['count']
+    # Contagem correta: Número de parcelas que foram individualmente pagas
+    cur.execute("SELECT COUNT(*) as count FROM parcelas WHERE status = 'Pago'")
+    parcelas_pagas = cur.fetchone()['count']
     
     # Nova lógica de cálculo baseada no Saldo Devedor Total
     from datetime import date
@@ -1897,7 +1905,8 @@ def api_relatorios_kpis():
             saldo_devedor_total += valor_parcela_atualizado
     
     # Calcular total recebido no mês atual
-    cur.execute("SELECT COALESCE(SUM(valor_pago), 0) as total FROM pagamentos WHERE data_pagamento >= %s", (primeiro_dia_mes,))
+    # Usa historico_pagamentos pois é o log unificado de todos os pagamentos (avulsos e parcelas)
+    cur.execute("SELECT COALESCE(SUM(valor_pago), 0) as total FROM historico_pagamentos WHERE DATE(data_pagamento) >= %s", (primeiro_dia_mes,))
     total_recebido_mes = cur.fetchone()['total']
     
     cur.close()
@@ -1907,7 +1916,7 @@ def api_relatorios_kpis():
         'total_clientes': total_clientes,
         'cobrancas_pendentes': cobrancas_pendentes,
         'cobrancas_vencidas': cobrancas_vencidas,
-        'cobrancas_pagas': cobrancas_pagas,
+        'parcelas_pagas': parcelas_pagas,
         'saldo_devedor_total': saldo_devedor_total,
         'total_recebido_mes': total_recebido_mes,
     })

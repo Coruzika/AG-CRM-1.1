@@ -990,7 +990,7 @@
                                 Distribuição das Parcelas
                             </h3>
                             <p style="color: var(--gray-500); font-size: 14px;" id="total-parcelas-grafico">
-                                Total: {{ (stats.cobrancas_pagas or 0) + stats.cobrancas_pendentes }} parcelas
+                                Total: {{ stats.total_parcelas or 0 }} parcelas
                             </p>
                         </div>
                         
@@ -1022,7 +1022,7 @@
                                     <span style="font-weight: 500; color: var(--gray-900);">Pagas</span>
                                 </div>
                                 <div style="text-align: right;">
-                                    <span style="font-weight: 600; color: var(--gray-900); font-size: 16px;">{{ stats.cobrancas_pagas or 0 }}</span>
+                                    <span style="font-weight: 600; color: var(--gray-900); font-size: 16px;">{{ stats.parcelas_pagas or 0 }}</span>
                                     <span style="color: var(--gray-500); font-size: 12px; margin-left: 4px;">parcelas</span>
                                 </div>
                             </div>
@@ -1276,7 +1276,7 @@
             console.log('Iniciando gráfico de parcelas...');
             
             // Dados do gráfico
-            const pagas = {{ stats.cobrancas_pagas or 0 }};
+            const pagas = {{ stats.parcelas_pagas or 0 }};
             const pendentes = {{ stats.cobrancas_pendentes }};
             const vencidas = {{ stats.cobrancas_vencidas }};
             const aPagar = pendentes - vencidas;
