@@ -469,11 +469,18 @@
                                             </td>
                                             <td style="padding: 12px; border-bottom: 1px solid #dee2e6; text-align: center;">
                                                 {% if parcela_data.status != 'Pago' %}
-                                                <form action="{{ url_for('marcar_parcela_paga', id=parcela_data.id) }}" method="POST" style="display: inline;" onsubmit="return confirm('Confirmar pagamento da parcela {{ parcela_data.numero }}?');">
-                                                    <button type="submit" style="background: #28a745; color: white; border: none; padding: 6px 12px; border-radius: 4px; cursor: pointer; font-size: 12px; font-weight: 500; margin-right: 5px;">
-                                                        💰 Pagar
-                                                    </button>
-                                                </form>
+                                                <button type="button"
+                                                        class="btn btn-success btn-xs"
+                                                        data-bs-toggle="modal"
+                                                        data-bs-target="#pagamentoParcelaModal"
+                                                        data-parcela-id="{{ parcela_data.id }}"
+                                                        data-parcela-num="{{ parcela_data.numero }}"
+                                                        data-valor-atualizado="{{ parcela_data.valor_atualizado | float }}"
+                                                        data-valor-restante="{{ parcela_data.valor_restante | float }}"
+                                                        data-valor-pago="{{ parcela_data.valor_pago_atual | float }}"
+                                                        style="padding: 6px 12px; font-size: 12px; margin-right: 5px;">
+                                                    💰 Pagar
+                                                </button>
                                                 <button type="button" class="btn btn-warning btn-xs ml-1" data-bs-toggle="modal" data-bs-target="#editarMultaParcelaModal"
                                                         data-parcela-id="{{ parcela_data.id }}"
                                                         data-parcela-num="{{ parcela_data.numero }}"
@@ -631,6 +638,35 @@
         </div>
     </div>
 
+    <!-- Modal Pagamento Parcela -->
+    <div class="modal fade" id="pagamentoParcelaModal" tabindex="-1" aria-labelledby="pagamentoParcelaModalLabel" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="pagamentoParcelaModalLabel">Pagamento da Parcela</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <form id="pagamentoParcelaForm" method="POST" action="">
+                    <div class="modal-body">
+                        <p>Parcela Nº: <strong id="pagamentoParcelaNumero"></strong></p>
+                        <p>Valor Atualizado: <strong id="pagamentoParcelaValorTotal"></strong></p>
+                        <p>Valor Já Pago: <strong id="pagamentoParcelaValorPago"></strong></p>
+                        <p>Saldo Restante: <strong id="pagamentoParcelaSaldo"></strong></p>
+                        <div class="form-group mt-3">
+                            <label for="valor_pago_parcela_input" class="form-label">Valor pago agora (R$)</label>
+                            <input type="number" step="0.01" min="0.01" class="form-control" id="valor_pago_parcela_input" name="valor_pago" placeholder="Informe o valor recebido">
+                            <small class="text-muted">Deixe em branco para quitar o saldo restante automaticamente.</small>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                        <button type="submit" class="btn btn-success">Registrar Pagamento</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
     <!-- Modal Registrar Pagamento -->
     <div id="pagamentoModal" class="modal" style="display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.5);">
         <div class="modal-content" style="background-color: white; margin: 5% auto; padding: 30px; border-radius: 10px; width: 90%; max-width: 500px; box-shadow: 0 5px 25px rgba(0,0,0,0.2);">
@@ -662,22 +698,70 @@
     <script>
         document.addEventListener('DOMContentLoaded', function() {
             const pagamentoForm = document.getElementById('pagamentoForm');
-
             if (pagamentoForm) {
                 pagamentoForm.addEventListener('submit', function() {
-                    // Encontra o botão de submissão dentro do formulário
                     const submitButton = pagamentoForm.querySelector('button[type="submit"]');
-
                     if (submitButton) {
-                        // Desativa o botão
                         submitButton.disabled = true;
-
-                        // Altera o texto para dar feedback ao utilizador
                         submitButton.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> A processar...';
                     }
                 });
             }
+
+            const pagamentoParcelaForm = document.getElementById('pagamentoParcelaForm');
+            if (pagamentoParcelaForm) {
+                pagamentoParcelaForm.addEventListener('submit', function() {
+                    const submitButton = pagamentoParcelaForm.querySelector('button[type="submit"]');
+                    if (submitButton) {
+                        submitButton.disabled = true;
+                        submitButton.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Registrando...';
+                    }
+                });
+            }
+
+            const pagamentoParcelaModal = document.getElementById('pagamentoParcelaModal');
+            if (pagamentoParcelaModal) {
+                pagamentoParcelaModal.addEventListener('show.bs.modal', function (event) {
+                    const button = event.relatedTarget;
+                    if (!button) return;
+
+                    const parcelaId = button.getAttribute('data-parcela-id');
+                    const parcelaNum = button.getAttribute('data-parcela-num');
+                    const valorAtualizado = parseFloat(button.getAttribute('data-valor-atualizado')) || 0;
+                    const valorRestante = parseFloat(button.getAttribute('data-valor-restante')) || 0;
+                    const valorPago = parseFloat(button.getAttribute('data-valor-pago')) || 0;
+
+                    document.getElementById('pagamentoParcelaNumero').textContent = parcelaNum;
+                    document.getElementById('pagamentoParcelaValorTotal').textContent = formatCurrency(valorAtualizado);
+                    document.getElementById('pagamentoParcelaValorPago').textContent = formatCurrency(valorPago);
+                    document.getElementById('pagamentoParcelaSaldo').textContent = formatCurrency(valorRestante);
+
+                    const valorInput = document.getElementById('valor_pago_parcela_input');
+                    valorInput.value = valorRestante > 0 ? valorRestante.toFixed(2) : '';
+                    valorInput.max = (valorRestante > 0 ? valorRestante : valorAtualizado).toFixed(2);
+
+                    const form = document.getElementById('pagamentoParcelaForm');
+                    form.action = `/parcela/${parcelaId}/pagar`;
+
+                    const submitButton = form.querySelector('button[type="submit"]');
+                    submitButton.disabled = valorRestante <= 0;
+                    submitButton.innerHTML = 'Registrar Pagamento';
+                });
+
+                pagamentoParcelaModal.addEventListener('hidden.bs.modal', function () {
+                    const submitButton = document.querySelector('#pagamentoParcelaForm button[type="submit"]');
+                    if (submitButton) {
+                        submitButton.disabled = false;
+                        submitButton.innerHTML = 'Registrar Pagamento';
+                    }
+                });
+            }
         });
+
+        function formatCurrency(value) {
+            const numericValue = typeof value === 'number' ? value : parseFloat(value) || 0;
+            return `R$ ${numericValue.toFixed(2).replace('.', ',')}`;
+        }
 
         function openPaymentModal(cobrancaId, clienteNome, valorTotal) {
             document.getElementById('pagamentoModal').style.display = "block";

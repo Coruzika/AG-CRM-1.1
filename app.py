@@ -17,6 +17,7 @@ from psycopg.errors import UniqueViolation
 from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill
 from openpyxl.utils import get_column_letter
+from decimal import Decimal, InvalidOperation
 
 # Carregar variáveis de ambiente do arquivo .env se existir
 try:
@@ -871,7 +872,7 @@ def visualizar_cliente(cliente_id):
         for cobranca in cobrancas:
             # Converter dict para um objeto mutável
             cobranca_dict = dict(cobranca)
-            saldo_devedor_cobranca = 0
+            saldo_devedor_cobranca = Decimal('0.00')
             multa_total_cobranca = 0
             cobranca_dict['parcelas_com_multa'] = []  # Lista para guardar dados das parcelas para o template
 
@@ -889,11 +890,16 @@ def visualizar_cliente(cliente_id):
 
             for parcela in parcelas:
                 parcela_dict = dict(parcela)
-                parcela_dict['multa_manual'] = parcela_dict['multa_manual'] or 0
-                parcela_dict['valor_atualizado'] = parcela_dict['valor'] + parcela_dict['multa_manual']
+                multa_manual = Decimal(str(parcela_dict.get('multa_manual') or 0))
+                valor_original = Decimal(str(parcela_dict['valor']))
+                valor_pago_atual = Decimal(str(parcela_dict.get('valor_pago') or 0))
+                valor_atualizado = valor_original + multa_manual
+                valor_restante = max(valor_atualizado - valor_pago_atual, Decimal('0.00'))
+                parcela_dict['multa_manual'] = float(multa_manual)
+                parcela_dict['valor_atualizado'] = valor_atualizado
 
                 if parcela_dict['status'] == 'Pendente':
-                    saldo_devedor_cobranca += parcela_dict['valor_atualizado']
+                    saldo_devedor_cobranca += valor_restante
 
                 # Guarda os dados calculados para exibir no template
                 cobranca_dict['parcelas_com_multa'].append({
@@ -903,12 +909,14 @@ def visualizar_cliente(cliente_id):
                     'multa_manual': parcela_dict['multa_manual'],
                     'valor_atualizado': parcela_dict['valor_atualizado'],
                     'status': parcela_dict['status'],
-                    'id': parcela_dict['id']
+                    'id': parcela_dict['id'],
+                    'valor_pago_atual': float(valor_pago_atual),
+                    'valor_restante': float(valor_restante)
                 })
 
             # Adiciona atributos dinâmicos à cobrança para exibição consistente
             cobranca_dict['multa_aplicada'] = 0  # Multas agora são por parcela
-            cobranca_dict['saldo_devedor_calculado'] = saldo_devedor_cobranca - (cobranca_dict['valor_pago'] or 0)
+            cobranca_dict['saldo_devedor_calculado'] = float(saldo_devedor_cobranca)
             
             # Para compatibilidade com template existente
             cobranca_dict['valor_multa'] = 0  # Multas agora são por parcela
@@ -1334,33 +1342,81 @@ def marcar_parcela_paga(id):
         conn.close()
         return redirect(url_for('index'))
     
-    if parcela['status'] == 'Pago':
+    valor_pago_atual = Decimal(str(parcela.get('valor_pago') or 0))
+    multa_manual = Decimal(str(parcela.get('multa_manual') or 0))
+    valor_devido = Decimal(str(parcela['valor'])) + multa_manual
+    saldo_restante = max(valor_devido - valor_pago_atual, Decimal('0.00'))
+
+    if parcela['status'] == 'Pago' or saldo_restante <= 0:
         flash('Esta parcela já foi paga.', 'info')
         cur.close()
         conn.close()
         return redirect(url_for('visualizar_cliente', cliente_id=parcela['cliente_id']))
+
+    valor_input = request.form.get('valor_pago')
+    valor_pagamento = None
+    if valor_input:
+        valor_normalizado = str(valor_input).replace(',', '.').strip()
+        if valor_normalizado:
+            try:
+                valor_pagamento = Decimal(valor_normalizado)
+            except InvalidOperation:
+                cur.close()
+                conn.close()
+                flash('Valor de pagamento inválido.', 'danger')
+                return redirect(url_for('visualizar_cliente', cliente_id=parcela['cliente_id']))
+            if valor_pagamento <= 0:
+                valor_pagamento = None
+
+    if not valor_pagamento:
+        valor_pagamento = saldo_restante
+
+    if saldo_restante > 0 and valor_pagamento > saldo_restante:
+        valor_pagamento = saldo_restante
+
+    valor_pagamento = valor_pagamento.quantize(Decimal('0.01'))
+
+    if valor_pagamento <= 0:
+        flash('Não há saldo pendente para esta parcela.', 'info')
+        cur.close()
+        conn.close()
+        return redirect(url_for('visualizar_cliente', cliente_id=parcela['cliente_id']))
+
+    novo_total_pago = (valor_pago_atual + valor_pagamento).quantize(Decimal('0.01'))
+    status_novo = 'Pago' if novo_total_pago >= valor_devido else 'Pendente'
+    data_pagamento_valor = date.today() if status_novo == 'Pago' else parcela.get('data_pagamento')
     
     try:
-        # Marcar parcela como paga
+        # Atualizar parcela com pagamento parcial ou total
         cur.execute('''
             UPDATE parcelas 
-            SET status='Pago', valor_pago=%s, forma_pagamento='Dinheiro', 
-                data_pagamento=CURRENT_DATE, atualizado_em=CURRENT_TIMESTAMP
+            SET status=%s,
+                valor_pago=COALESCE(valor_pago, 0) + %s,
+                forma_pagamento='Dinheiro',
+                data_pagamento=%s,
+                atualizado_em=CURRENT_TIMESTAMP
             WHERE id=%s
-        ''', (parcela['valor'], id))
+        ''', (status_novo, valor_pagamento, data_pagamento_valor, id))
         
         # Atualizar valor pago na cobrança principal
         cur.execute('''
             UPDATE cobrancas 
             SET valor_pago = COALESCE(valor_pago, 0) + %s, atualizado_em=CURRENT_TIMESTAMP
             WHERE id=%s
-        ''', (parcela['valor'], parcela['cobranca_id']))
+        ''', (valor_pagamento, parcela['cobranca_id']))
         
         # Registrar no histórico de pagamentos
         cur.execute('''
             INSERT INTO historico_pagamentos (cobranca_id, cliente_id, valor_pago, forma_pagamento, observacoes, usuario_id)
             VALUES (%s, %s, %s, %s, %s, %s)
-        ''', (parcela['cobranca_id'], parcela['cliente_id'], parcela['valor'], 'Dinheiro', f'Pagamento da parcela {parcela["numero_parcela"]}', session.get('usuario_id')))
+        ''', (
+            parcela['cobranca_id'],
+            parcela['cliente_id'],
+            valor_pagamento,
+            'Dinheiro',
+            f'Pagamento da parcela {parcela["numero_parcela"]}',
+            session.get('usuario_id')
+        ))
         
         # Verificar se todas as parcelas da cobrança foram pagas
         cur.execute('SELECT COUNT(*) as total, SUM(CASE WHEN status = \'Pago\' THEN 1 ELSE 0 END) as pagas FROM parcelas WHERE cobranca_id = %s', (parcela['cobranca_id'],))
@@ -1375,7 +1431,11 @@ def marcar_parcela_paga(id):
             ''', (parcela['cobranca_id'],))
             flash(f'Parcela {parcela["numero_parcela"]} paga. Todas as parcelas foram pagas e a cobrança foi liquidada!', 'success')
         else:
-            flash(f'Parcela {parcela["numero_parcela"]} marcada como paga.', 'success')
+            if status_novo == 'Pago':
+                flash(f'Parcela {parcela["numero_parcela"]} quitada com pagamento de R$ {float(valor_pagamento):.2f}.', 'success')
+            else:
+                saldo_pos_pagamento = max(float((valor_devido - novo_total_pago).quantize(Decimal('0.01'))), 0.0)
+                flash(f'Pagamento parcial de R$ {float(valor_pagamento):.2f} registrado para a parcela {parcela["numero_parcela"]}. Saldo restante: R$ {saldo_pos_pagamento:.2f}.', 'info')
         
         conn.commit()
         
