@@ -1342,10 +1342,14 @@ def marcar_parcela_paga(id):
         conn.close()
         return redirect(url_for('index'))
     
-    valor_pago_atual = Decimal(str(parcela.get('valor_pago') or 0))
+    # Recálculo robusto do valor devido: valor original + multa_manual (trata None como 0)
+    valor_original = Decimal(str(parcela['valor']))
     multa_manual = Decimal(str(parcela.get('multa_manual') or 0))
-    valor_devido = Decimal(str(parcela['valor'])) + multa_manual
-    saldo_restante = max(valor_devido - valor_pago_atual, Decimal('0.00'))
+    valor_devido = valor_original + multa_manual
+    
+    # Soma correta do valor pago: valor_pago existente (trata None como 0) + valor_recebido_agora
+    valor_pago_existente = Decimal(str(parcela.get('valor_pago') or 0))
+    saldo_restante = max(valor_devido - valor_pago_existente, Decimal('0.00'))
 
     if parcela['status'] == 'Pago' or saldo_restante <= 0:
         flash('Esta parcela já foi paga.', 'info')
@@ -1353,66 +1357,77 @@ def marcar_parcela_paga(id):
         conn.close()
         return redirect(url_for('visualizar_cliente', cliente_id=parcela['cliente_id']))
 
+    # Obter valor recebido agora do formulário
     valor_input = request.form.get('valor_pago')
-    valor_pagamento = None
+    valor_recebido_agora = None
     if valor_input:
         valor_normalizado = str(valor_input).replace(',', '.').strip()
         if valor_normalizado:
             try:
-                valor_pagamento = Decimal(valor_normalizado)
+                valor_recebido_agora = Decimal(valor_normalizado)
             except InvalidOperation:
                 cur.close()
                 conn.close()
                 flash('Valor de pagamento inválido.', 'danger')
                 return redirect(url_for('visualizar_cliente', cliente_id=parcela['cliente_id']))
-            if valor_pagamento <= 0:
-                valor_pagamento = None
+            if valor_recebido_agora <= 0:
+                valor_recebido_agora = None
 
-    if not valor_pagamento:
-        valor_pagamento = saldo_restante
+    # Se não foi informado valor, usar o saldo restante completo
+    if not valor_recebido_agora:
+        valor_recebido_agora = saldo_restante
 
-    if saldo_restante > 0 and valor_pagamento > saldo_restante:
-        valor_pagamento = saldo_restante
+    # Limitar o valor recebido ao saldo restante disponível
+    if saldo_restante > 0 and valor_recebido_agora > saldo_restante:
+        valor_recebido_agora = saldo_restante
 
-    valor_pagamento = valor_pagamento.quantize(Decimal('0.01'))
+    valor_recebido_agora = valor_recebido_agora.quantize(Decimal('0.01'))
 
-    if valor_pagamento <= 0:
+    if valor_recebido_agora <= 0:
         flash('Não há saldo pendente para esta parcela.', 'info')
         cur.close()
         conn.close()
         return redirect(url_for('visualizar_cliente', cliente_id=parcela['cliente_id']))
 
-    novo_total_pago = (valor_pago_atual + valor_pagamento).quantize(Decimal('0.01'))
-    status_novo = 'Pago' if novo_total_pago >= valor_devido else 'Pendente'
+    # Calcular total pago após esta transação (cumulativo)
+    total_pago = (valor_pago_existente + valor_recebido_agora).quantize(Decimal('0.01'))
+    
+    # Comparação com tolerância para evitar erros de ponto flutuante (FIX PRINCIPAL)
+    tolerancia = Decimal('0.01')
+    if total_pago >= (valor_devido - tolerancia):
+        status_novo = 'Pago'
+    else:
+        status_novo = 'Pendente'
+    
     data_pagamento_valor = date.today() if status_novo == 'Pago' else parcela.get('data_pagamento')
     
     try:
-        # Atualizar parcela com pagamento parcial ou total
+        # Atualizar parcela: valor_pago cumulativo e status calculado
         cur.execute('''
             UPDATE parcelas 
             SET status=%s,
-                valor_pago=COALESCE(valor_pago, 0) + %s,
+                valor_pago=%s,
                 forma_pagamento='Dinheiro',
                 data_pagamento=%s,
                 atualizado_em=CURRENT_TIMESTAMP
             WHERE id=%s
-        ''', (status_novo, valor_pagamento, data_pagamento_valor, id))
+        ''', (status_novo, total_pago, data_pagamento_valor, id))
         
-        # Atualizar valor pago na cobrança principal
+        # Atualizar valor pago na cobrança principal (incrementa com o valor desta transação)
         cur.execute('''
             UPDATE cobrancas 
             SET valor_pago = COALESCE(valor_pago, 0) + %s, atualizado_em=CURRENT_TIMESTAMP
             WHERE id=%s
-        ''', (valor_pagamento, parcela['cobranca_id']))
+        ''', (valor_recebido_agora, parcela['cobranca_id']))
         
-        # Registrar no histórico de pagamentos
+        # Registrar no histórico de pagamentos apenas com o valor pago NESTA transação (não cumulativo)
         cur.execute('''
             INSERT INTO historico_pagamentos (cobranca_id, cliente_id, valor_pago, forma_pagamento, observacoes, usuario_id)
             VALUES (%s, %s, %s, %s, %s, %s)
         ''', (
             parcela['cobranca_id'],
             parcela['cliente_id'],
-            valor_pagamento,
+            valor_recebido_agora,
             'Dinheiro',
             f'Pagamento da parcela {parcela["numero_parcela"]}',
             session.get('usuario_id')
@@ -1432,10 +1447,10 @@ def marcar_parcela_paga(id):
             flash(f'Parcela {parcela["numero_parcela"]} paga. Todas as parcelas foram pagas e a cobrança foi liquidada!', 'success')
         else:
             if status_novo == 'Pago':
-                flash(f'Parcela {parcela["numero_parcela"]} quitada com pagamento de R$ {float(valor_pagamento):.2f}.', 'success')
+                flash(f'Parcela {parcela["numero_parcela"]} quitada com pagamento de R$ {float(valor_recebido_agora):.2f}.', 'success')
             else:
-                saldo_pos_pagamento = max(float((valor_devido - novo_total_pago).quantize(Decimal('0.01'))), 0.0)
-                flash(f'Pagamento parcial de R$ {float(valor_pagamento):.2f} registrado para a parcela {parcela["numero_parcela"]}. Saldo restante: R$ {saldo_pos_pagamento:.2f}.', 'info')
+                saldo_pos_pagamento = max(float((valor_devido - total_pago).quantize(Decimal('0.01'))), 0.0)
+                flash(f'Pagamento parcial de R$ {float(valor_recebido_agora):.2f} registrado para a parcela {parcela["numero_parcela"]}. Saldo restante: R$ {saldo_pos_pagamento:.2f}.', 'info')
         
         conn.commit()
         
