@@ -1465,6 +1465,232 @@ def marcar_parcela_paga(id):
     
     return redirect(url_for('visualizar_cliente', cliente_id=parcela['cliente_id']))
 
+@app.route('/parcela/<int:id>/desfazer_pagamento', methods=['POST'])
+@login_required
+def desfazer_pagamento_parcela(id):
+    """Estorna um pagamento de parcela já quitada."""
+    conn = get_db()
+    cur = conn.cursor(row_factory=dict_row)
+
+    cur.execute('''
+        SELECT p.*, 
+               c.cliente_id, 
+               c.status AS cobranca_status,
+               c.data_pagamento AS cobranca_data_pagamento
+        FROM parcelas p
+        JOIN cobrancas c ON p.cobranca_id = c.id
+        WHERE p.id = %s
+    ''', (id,))
+    parcela = cur.fetchone()
+
+    if not parcela:
+        flash('Parcela não encontrada.', 'danger')
+        cur.close()
+        conn.close()
+        return redirect(url_for('index'))
+
+    valor_pago_atual = Decimal(str(parcela.get('valor_pago') or 0)).quantize(Decimal('0.01'))
+    if valor_pago_atual <= 0 or parcela['status'] != 'Pago':
+        flash('Esta parcela não possui pagamento a ser estornado.', 'info')
+        cur.close()
+        conn.close()
+        return redirect(url_for('visualizar_cliente', cliente_id=parcela['cliente_id']))
+
+    try:
+        cur.execute('''
+            UPDATE parcelas
+            SET status='Pendente',
+                valor_pago=0,
+                forma_pagamento=NULL,
+                data_pagamento=NULL,
+                atualizado_em=CURRENT_TIMESTAMP
+            WHERE id=%s
+        ''', (id,))
+
+        cur.execute('''
+            SELECT COUNT(*) AS total,
+                   SUM(CASE WHEN status = 'Pago' THEN 1 ELSE 0 END) AS pagas
+            FROM parcelas
+            WHERE cobranca_id = %s
+        ''', (parcela['cobranca_id'],))
+        status_parcelas = cur.fetchone()
+
+        todas_pagas = status_parcelas['total'] > 0 and status_parcelas['pagas'] == status_parcelas['total']
+        novo_status_cobranca = 'Pago' if todas_pagas else 'Pendente'
+        data_pagamento_cobranca = parcela.get('cobranca_data_pagamento')
+        if novo_status_cobranca == 'Pago' and not data_pagamento_cobranca:
+            data_pagamento_cobranca = date.today()
+        if novo_status_cobranca != 'Pago':
+            data_pagamento_cobranca = None
+
+        cur.execute('''
+            UPDATE cobrancas
+            SET valor_pago = GREATEST(COALESCE(valor_pago, 0) - %s, 0),
+                status=%s,
+                data_pagamento=%s,
+                atualizado_em=CURRENT_TIMESTAMP
+            WHERE id=%s
+        ''', (valor_pago_atual, novo_status_cobranca, data_pagamento_cobranca, parcela['cobranca_id']))
+
+        cur.execute('''
+            INSERT INTO historico_pagamentos (cobranca_id, cliente_id, valor_pago, forma_pagamento, observacoes, usuario_id)
+            VALUES (%s, %s, %s, %s, %s, %s)
+        ''', (
+            parcela['cobranca_id'],
+            parcela['cliente_id'],
+            -valor_pago_atual,
+            'Dinheiro',
+            f'Pagamento da parcela {parcela["numero_parcela"]} estornado',
+            session.get('usuario_id')
+        ))
+
+        conn.commit()
+        flash(f'Pagamento da parcela {parcela["numero_parcela"]} estornado com sucesso.', 'warning')
+    except Exception as e:
+        conn.rollback()
+        flash(f'Erro ao estornar pagamento: {str(e)}', 'danger')
+    finally:
+        cur.close()
+        conn.close()
+
+    return redirect(url_for('visualizar_cliente', cliente_id=parcela['cliente_id']))
+
+@app.route('/parcela/<int:id>/editar_pagamento', methods=['POST'])
+@login_required
+def editar_pagamento_parcela(id):
+    """Permite ajustar o valor pago de uma parcela já registrada."""
+    conn = get_db()
+    cur = conn.cursor(row_factory=dict_row)
+
+    cur.execute('''
+        SELECT p.*, 
+               c.cliente_id,
+               c.status AS cobranca_status,
+               c.data_pagamento AS cobranca_data_pagamento
+        FROM parcelas p
+        JOIN cobrancas c ON p.cobranca_id = c.id
+        WHERE p.id = %s
+    ''', (id,))
+    parcela = cur.fetchone()
+
+    if not parcela:
+        flash('Parcela não encontrada.', 'danger')
+        cur.close()
+        conn.close()
+        return redirect(url_for('index'))
+
+    novo_valor_input = request.form.get('novo_valor_pago')
+    if novo_valor_input is None:
+        flash('Valor inválido.', 'danger')
+        cur.close()
+        conn.close()
+        return redirect(url_for('visualizar_cliente', cliente_id=parcela['cliente_id']))
+
+    try:
+        novo_valor = Decimal(str(novo_valor_input).replace(',', '.')).quantize(Decimal('0.01'))
+    except (InvalidOperation, ValueError):
+        cur.close()
+        conn.close()
+        flash('Valor inválido para ajuste.', 'danger')
+        return redirect(url_for('visualizar_cliente', cliente_id=parcela['cliente_id']))
+
+    if novo_valor < 0:
+        flash('O valor pago não pode ser negativo.', 'danger')
+        cur.close()
+        conn.close()
+        return redirect(url_for('visualizar_cliente', cliente_id=parcela['cliente_id']))
+
+    valor_original = Decimal(str(parcela['valor']))
+    multa_manual = Decimal(str(parcela.get('multa_manual') or 0))
+    valor_devido = (valor_original + multa_manual).quantize(Decimal('0.01'))
+
+    if valor_devido > 0 and novo_valor > valor_devido:
+        novo_valor = valor_devido
+
+    valor_antigo = Decimal(str(parcela.get('valor_pago') or 0)).quantize(Decimal('0.01'))
+    diff = (novo_valor - valor_antigo).quantize(Decimal('0.01'))
+
+    if diff == 0:
+        flash('Nenhuma alteração detectada no valor pago.', 'info')
+        cur.close()
+        conn.close()
+        return redirect(url_for('visualizar_cliente', cliente_id=parcela['cliente_id']))
+
+    tolerancia = Decimal('0.01')
+    if novo_valor + tolerancia >= valor_devido:
+        status_novo = 'Pago'
+    else:
+        status_novo = 'Pendente'
+
+    if status_novo == 'Pago':
+        data_pagamento_nova = parcela.get('data_pagamento') or date.today()
+    else:
+        data_pagamento_nova = None
+
+    try:
+        cur.execute('''
+            UPDATE parcelas
+            SET valor_pago=%s,
+                status=%s,
+                data_pagamento=%s,
+                atualizado_em=CURRENT_TIMESTAMP
+            WHERE id=%s
+        ''', (novo_valor, status_novo, data_pagamento_nova, id))
+
+        cur.execute('''
+            UPDATE cobrancas
+            SET valor_pago = GREATEST(COALESCE(valor_pago, 0) + %s, 0),
+                atualizado_em=CURRENT_TIMESTAMP
+            WHERE id=%s
+        ''', (diff, parcela['cobranca_id']))
+
+        cur.execute('''
+            SELECT COUNT(*) AS total,
+                   SUM(CASE WHEN status = 'Pago' THEN 1 ELSE 0 END) AS pagas
+            FROM parcelas
+            WHERE cobranca_id = %s
+        ''', (parcela['cobranca_id'],))
+        status_parcelas = cur.fetchone()
+
+        todas_pagas = status_parcelas['total'] > 0 and status_parcelas['pagas'] == status_parcelas['total']
+        novo_status_cobranca = 'Pago' if todas_pagas else 'Pendente'
+        data_pagamento_cobranca = parcela.get('cobranca_data_pagamento')
+        if novo_status_cobranca == 'Pago' and not data_pagamento_cobranca:
+            data_pagamento_cobranca = date.today()
+        if novo_status_cobranca != 'Pago':
+            data_pagamento_cobranca = None
+
+        cur.execute('''
+            UPDATE cobrancas
+            SET status=%s,
+                data_pagamento=%s,
+                atualizado_em=CURRENT_TIMESTAMP
+            WHERE id=%s
+        ''', (novo_status_cobranca, data_pagamento_cobranca, parcela['cobranca_id']))
+
+        cur.execute('''
+            INSERT INTO historico_pagamentos (cobranca_id, cliente_id, valor_pago, forma_pagamento, observacoes, usuario_id)
+            VALUES (%s, %s, %s, %s, %s, %s)
+        ''', (
+            parcela['cobranca_id'],
+            parcela['cliente_id'],
+            diff,
+            'Dinheiro',
+            f'Correção de valor da parcela {parcela["numero_parcela"]}: de R$ {float(valor_antigo):.2f} para R$ {float(novo_valor):.2f}',
+            session.get('usuario_id')
+        ))
+
+        conn.commit()
+        flash(f'Valor pago da parcela {parcela["numero_parcela"]} atualizado para R$ {float(novo_valor):.2f}.', 'success')
+    except Exception as e:
+        conn.rollback()
+        flash(f'Erro ao atualizar pagamento: {str(e)}', 'danger')
+    finally:
+        cur.close()
+        conn.close()
+
+    return redirect(url_for('visualizar_cliente', cliente_id=parcela['cliente_id']))
+
 @app.route('/parcela/<int:id>/editar_multa', methods=['POST'])
 @login_required
 def editar_multa_parcela(id):

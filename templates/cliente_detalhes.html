@@ -513,7 +513,25 @@
                                                     <i class="fas fa-calendar-alt"></i> Data
                                                 </button>
                                                 {% else %}
-                                                    <span style="color: #28a745; font-weight: 600; font-size: 12px;">✓ Pago</span>
+                                                <div style="display: inline-flex; gap: 6px; flex-wrap: wrap; justify-content: center;">
+                                                    <button type="button"
+                                                            class="btn btn-secondary btn-xs"
+                                                            data-bs-toggle="modal"
+                                                            data-bs-target="#editarPagamentoParcelaModal"
+                                                            data-parcela-id="{{ parcela_data.id }}"
+                                                            data-parcela-num="{{ parcela_data.numero }}"
+                                                            data-valor-atualizado="{{ parcela_data.valor_atualizado | float }}"
+                                                            data-valor-pago-atual="{{ parcela_data.valor_pago_atual | float }}"
+                                                            style="padding: 6px 12px; font-size: 12px;">
+                                                        ✏️ Editar
+                                                    </button>
+                                                    <form action="{{ url_for('desfazer_pagamento_parcela', id=parcela_data.id) }}"
+                                                          method="POST"
+                                                          style="display: inline;"
+                                                          onsubmit="return confirm('Confirma desfazer o pagamento da parcela {{ parcela_data.numero }}?');">
+                                                        <button type="submit" class="btn btn-danger btn-xs" style="padding: 6px 12px; font-size: 12px;">↩️ Desfazer</button>
+                                                    </form>
+                                                </div>
                                                 {% endif %}
                                             </td>
                                         </tr>
@@ -601,6 +619,34 @@
                     <p>Nenhum documento anexado.</p>
                 </div>
             {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal Editar Pagamento de Parcela -->
+    <div class="modal fade" id="editarPagamentoParcelaModal" tabindex="-1" aria-labelledby="editarPagamentoParcelaModalLabel" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="editarPagamentoParcelaModalLabel">Editar Pagamento da Parcela</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <form id="editarPagamentoParcelaForm" method="POST" action="">
+                    <div class="modal-body">
+                        <p>Parcela Nº: <strong id="editarPagamentoParcelaNumero"></strong></p>
+                        <p>Valor Atualizado: <strong id="editarPagamentoParcelaValorAtualizado"></strong></p>
+                        <p>Valor Pago Atual: <strong id="editarPagamentoParcelaValorPagoAtual"></strong></p>
+                        <div class="form-group mt-3">
+                            <label for="novo_valor_pago_parcela_input" class="form-label">Novo valor pago (R$)</label>
+                            <input type="number" step="0.01" min="0" class="form-control" id="novo_valor_pago_parcela_input" name="novo_valor_pago" required>
+                            <small class="text-muted">Use este campo para corrigir o pagamento registrado.</small>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                        <button type="submit" class="btn btn-primary">Salvar Ajuste</button>
+                    </div>
+                </form>
             </div>
         </div>
     </div>
@@ -868,6 +914,56 @@
                     var form = document.getElementById('editarDataParcelaForm');
                     form.action = '/parcela/' + parcelaId + '/editar_data';
                 });
+            }
+
+            const editarPagamentoParcelaModal = document.getElementById('editarPagamentoParcelaModal');
+
+            if (editarPagamentoParcelaModal) {
+                editarPagamentoParcelaModal.addEventListener('show.bs.modal', function (event) {
+                    const button = event.relatedTarget;
+                    if (!button) return;
+
+                    const parcelaId = button.getAttribute('data-parcela-id');
+                    const parcelaNum = button.getAttribute('data-parcela-num');
+                    const valorAtualizado = parseFloat(button.getAttribute('data-valor-atualizado')) || 0;
+                    const valorPagoAtual = parseFloat(button.getAttribute('data-valor-pago-atual')) || 0;
+
+                    document.getElementById('editarPagamentoParcelaNumero').textContent = parcelaNum;
+                    document.getElementById('editarPagamentoParcelaValorAtualizado').textContent = formatCurrency(valorAtualizado);
+                    document.getElementById('editarPagamentoParcelaValorPagoAtual').textContent = formatCurrency(valorPagoAtual);
+
+                    const valorInput = document.getElementById('novo_valor_pago_parcela_input');
+                    valorInput.value = valorPagoAtual.toFixed(2);
+                    valorInput.max = valorAtualizado.toFixed(2);
+
+                    const form = document.getElementById('editarPagamentoParcelaForm');
+                    form.action = `/parcela/${parcelaId}/editar_pagamento`;
+
+                    const submitButton = form.querySelector('button[type="submit"]');
+                    if (submitButton) {
+                        submitButton.disabled = false;
+                        submitButton.innerHTML = 'Salvar Ajuste';
+                    }
+                });
+
+                editarPagamentoParcelaModal.addEventListener('hidden.bs.modal', function () {
+                    const submitButton = document.querySelector('#editarPagamentoParcelaForm button[type="submit"]');
+                    if (submitButton) {
+                        submitButton.disabled = false;
+                        submitButton.innerHTML = 'Salvar Ajuste';
+                    }
+                });
+
+                const editarPagamentoParcelaForm = document.getElementById('editarPagamentoParcelaForm');
+                if (editarPagamentoParcelaForm) {
+                    editarPagamentoParcelaForm.addEventListener('submit', function () {
+                        const submitButton = editarPagamentoParcelaForm.querySelector('button[type="submit"]');
+                        if (submitButton) {
+                            submitButton.disabled = true;
+                            submitButton.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Salvando...';
+                        }
+                    });
+                }
             }
         });
     </script>
