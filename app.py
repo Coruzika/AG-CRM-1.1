@@ -1390,11 +1390,13 @@ def marcar_parcela_paga(id):
         return redirect(url_for('visualizar_cliente', cliente_id=parcela['cliente_id']))
 
     # Calcular total pago após esta transação (cumulativo)
-    total_pago = (valor_pago_existente + valor_recebido_agora).quantize(Decimal('0.01'))
+    valor_pago_total = (valor_pago_existente + valor_recebido_agora).quantize(Decimal('0.01'))
+    if valor_pago_total > valor_devido:
+        valor_pago_total = valor_devido
     
     # Comparação com tolerância para evitar erros de ponto flutuante (FIX PRINCIPAL)
     tolerancia = Decimal('0.01')
-    if total_pago >= (valor_devido - tolerancia):
+    if valor_pago_total + tolerancia >= valor_devido:
         status_novo = 'Pago'
     else:
         status_novo = 'Pendente'
@@ -1411,7 +1413,7 @@ def marcar_parcela_paga(id):
                 data_pagamento=%s,
                 atualizado_em=CURRENT_TIMESTAMP
             WHERE id=%s
-        ''', (status_novo, total_pago, data_pagamento_valor, id))
+        ''', (status_novo, valor_pago_total, data_pagamento_valor, id))
         
         # Atualizar valor pago na cobrança principal (incrementa com o valor desta transação)
         cur.execute('''
@@ -1449,7 +1451,7 @@ def marcar_parcela_paga(id):
             if status_novo == 'Pago':
                 flash(f'Parcela {parcela["numero_parcela"]} quitada com pagamento de R$ {float(valor_recebido_agora):.2f}.', 'success')
             else:
-                saldo_pos_pagamento = max(float((valor_devido - total_pago).quantize(Decimal('0.01'))), 0.0)
+                saldo_pos_pagamento = max(float((valor_devido - valor_pago_total).quantize(Decimal('0.01'))), 0.0)
                 flash(f'Pagamento parcial de R$ {float(valor_recebido_agora):.2f} registrado para a parcela {parcela["numero_parcela"]}. Saldo restante: R$ {saldo_pos_pagamento:.2f}.', 'info')
         
         conn.commit()

@@ -226,6 +226,11 @@
             color: #7c2d12;
         }
 
+        .partial-remaining {
+            color: #ea580c;
+            font-weight: 600;
+        }
+
         .btn-sm {
             padding: 5px 10px;
             border: none;
@@ -422,7 +427,7 @@
                             <a href="{{ url_for('visualizar_pagamentos_cobranca', cobranca_id=cobranca.id) }}" class="btn-sm" style="background: #3b82f6; color: white; text-decoration: none; padding: 5px 10px; border-radius: 4px; font-size: 12px; margin-right: 5px;">Ver Pagamentos</a>
                             {% if cobranca.status != 'Pago' %}
                             <a href="{{ url_for('editar_cobranca', id=cobranca.id) }}" class="btn-sm" style="background: #667eea; color: white; text-decoration: none; padding: 5px 10px; border-radius: 4px; font-size: 12px; margin-right: 5px;">Editar</a>
-                            <button onclick="openPaymentModal({{ cobranca.id }}, '{{ cliente.nome }}', {{ cobranca.total_a_pagar }})" class="btn-sm pay">Pagar</button>
+                            <button onclick="openPaymentModal({{ cobranca.id }}, '{{ cliente.nome }}', {{ (cobranca.total_a_pagar or 0)|float }}, {{ (cobranca.saldo_devedor_calculado or 0)|float }})" class="btn-sm pay">Pagar</button>
                             <form action="{{ url_for('cancelar_cobranca', cobranca_id=cobranca.id) }}" method="POST" style="display: inline;" onsubmit="return confirm('Deseja cancelar esta cobrança?');">
                                 <button type="submit" class="btn-sm cancel">Cancelar</button>
                             </form>
@@ -441,7 +446,9 @@
                                             <th style="padding: 12px; text-align: left; font-weight: 600; color: #495057; border-bottom: 1px solid #dee2e6;">Vencimento</th>
                                             <th style="padding: 12px; text-align: left; font-weight: 600; color: #495057; border-bottom: 1px solid #dee2e6;">Valor Original</th>
                                             <th style="padding: 12px; text-align: left; font-weight: 600; color: #495057; border-bottom: 1px solid #dee2e6;">Multa Manual</th>
-                                            <th style="padding: 12px; text-align: left; font-weight: 600; color: #495057; border-bottom: 1px solid #dee2e6;">Valor Total</th>
+                                            <th style="padding: 12px; text-align: left; font-weight: 600; color: #495057; border-bottom: 1px solid #dee2e6;">Valor Atualizado</th>
+                                            <th style="padding: 12px; text-align: left; font-weight: 600; color: #495057; border-bottom: 1px solid #dee2e6;">Valor Pago</th>
+                                            <th style="padding: 12px; text-align: left; font-weight: 600; color: #495057; border-bottom: 1px solid #dee2e6;">Restante</th>
                                             <th style="padding: 12px; text-align: left; font-weight: 600; color: #495057; border-bottom: 1px solid #dee2e6;">Status</th>
                                             <th style="padding: 12px; text-align: center; font-weight: 600; color: #495057; border-bottom: 1px solid #dee2e6;">Ações</th>
                                         </tr>
@@ -459,6 +466,16 @@
                                             </td>
                                             <td style="padding: 12px; border-bottom: 1px solid #dee2e6; font-weight: 600;">
                                                 R$ {{ "{:,.2f}".format(parcela_data.valor_atualizado).replace(',', 'X').replace('.', ',').replace('X', '.') }}
+                                            </td>
+                                            <td style="padding: 12px; border-bottom: 1px solid #dee2e6;">
+                                                R$ {{ "{:,.2f}".format(parcela_data.valor_pago_atual or 0).replace(',', 'X').replace('.', ',').replace('X', '.') }}
+                                            </td>
+                                            <td style="padding: 12px; border-bottom: 1px solid #dee2e6;">
+                                                {% set restante_valor = parcela_data.valor_restante or 0 %}
+                                                {% set destaque_restante = restante_valor > 0 and (parcela_data.valor_pago_atual or 0) > 0 and parcela_data.status != 'Pago' %}
+                                                <span class="{{ 'partial-remaining' if destaque_restante else '' }}">
+                                                    R$ {{ "{:,.2f}".format(restante_valor).replace(',', 'X').replace('.', ',').replace('X', '.') }}
+                                                </span>
                                             </td>
                                             <td style="padding: 12px; border-bottom: 1px solid #dee2e6;">
                                                 {% if parcela_data.status == 'Pago' %}
@@ -677,7 +694,8 @@
             <form id="pagamentoForm" method="POST" action="">
                 <div style="margin-bottom: 20px;">
                     <p>Cobrança ID: <strong id="pagamentoCobrancaId"></strong></p>
-                    <p>Valor Total Devido (com multas): <strong id="pagamentoValorTotal"></strong></p>
+                    <p>Valor Total (com multas): <strong id="pagamentoValorTotal"></strong></p>
+                    <p>Saldo em Aberto: <strong id="pagamentoSaldoAberto"></strong></p>
                 </div>
                 <div style="margin-bottom: 20px;">
                     <label for="valor_pago" style="display: block; margin-bottom: 5px; color: #4a5568; font-weight: 500;">Valor a Pagar (R$) *</label>
@@ -763,21 +781,27 @@
             return `R$ ${numericValue.toFixed(2).replace('.', ',')}`;
         }
 
-        function openPaymentModal(cobrancaId, clienteNome, valorTotal) {
+        function openPaymentModal(cobrancaId, clienteNome, valorTotal, saldoRestante) {
             document.getElementById('pagamentoModal').style.display = "block";
             document.getElementById('pagamentoCobrancaId').textContent = cobrancaId;
-            document.getElementById('pagamentoValorTotal').textContent = `R$ ${valorTotal.toFixed(2).replace('.', ',')}`;
+
+            const saldoCalculado = (typeof saldoRestante === 'number' && !isNaN(saldoRestante)) ? saldoRestante : valorTotal;
+            const valorSugerido = saldoCalculado > 0 ? saldoCalculado : valorTotal;
+
+            document.getElementById('pagamentoValorTotal').textContent = formatCurrency(valorTotal);
+            document.getElementById('pagamentoSaldoAberto').textContent = formatCurrency(Math.max(saldoCalculado, 0));
             
             var form = document.getElementById('pagamentoForm');
             form.action = `/cobranca/${cobrancaId}/registrar_pagamento`;
             
-            // Sugere o valor total no campo de pagamento
-            document.getElementById('valor_pago').value = valorTotal;
+            const valorInput = document.getElementById('valor_pago');
+            valorInput.value = valorSugerido.toFixed(2);
+            valorInput.max = valorSugerido.toFixed(2);
             
             // Reativa o botão quando o modal é aberto (caso tenha sido desativado anteriormente)
             const submitButton = form.querySelector('button[type="submit"]');
             if (submitButton) {
-                submitButton.disabled = false;
+                submitButton.disabled = saldoCalculado <= 0;
                 submitButton.innerHTML = 'Registrar Pagamento';
             }
         }
