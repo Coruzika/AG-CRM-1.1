@@ -449,6 +449,7 @@ def logout():
     return redirect(url_for('login'))
 
 # --- Rotas do Dashboard ---
+# --- Rotas do Dashboard ---
 @app.route('/')
 @login_required
 def index():
@@ -494,7 +495,8 @@ def index():
         
         for parcela in parcelas_pendentes:
             valor_parcela_atualizado = parcela['valor'] + (parcela['multa_manual'] or 0)
-            saldo_devedor_total += valor_parcela_atualizado
+            valor_pago_parcela = parcela.get('valor_pago') or 0
+            saldo_devedor_total += (valor_parcela_atualizado - valor_pago_parcela)
     
     # Calcular total recebido no mês atual
     # Usa historico_pagamentos pois é o log unificado de todos os pagamentos (avulsos e parcelas)
@@ -529,7 +531,8 @@ def index():
             
             for parcela_emp in parcelas_pendentes_emp:
                 valor_parcela_atualizado_emp = parcela_emp['valor'] + (parcela_emp['multa_manual'] or 0)
-                saldo_devedor_emp += valor_parcela_atualizado_emp
+                valor_pago_parcela_emp = parcela_emp.get('valor_pago') or 0
+                saldo_devedor_emp += (valor_parcela_atualizado_emp - valor_pago_parcela_emp)
         
         kpis_por_empresa[emp] = {
             'total_clientes': total_clientes_emp,
@@ -572,19 +575,33 @@ def index():
         ''', (cobranca['id'],))
         parcelas_pendentes = cur.fetchall()
         
+        dias_atraso_max = 0
         for parcela in parcelas_pendentes:
-            valor_parcela_atualizado = parcela['valor'] + (parcela['multa_manual'] or 0)
-            saldo_devedor_calculado += valor_parcela_atualizado
+            # CORREÇÃO AQUI: Calcula o restante de cada parcela individualmente
+            valor_total_parcela = parcela['valor'] + (parcela['multa_manual'] or 0)
+            valor_pago_parcela = parcela.get('valor_pago') or 0
+            
+            # O que falta pagar desta parcela específica
+            restante_parcela = valor_total_parcela - valor_pago_parcela
+            saldo_devedor_calculado += restante_parcela
+            
+            # Calcula dias de atraso
+            if hoje > parcela['data_vencimento']:
+                dias = (hoje - parcela['data_vencimento']).days
+                if dias > dias_atraso_max:
+                    dias_atraso_max = dias
         
         # Adiciona atributos dinâmicos à cobrança para exibição consistente
         cobranca_dict['multa_aplicada'] = 0  # Multas agora são por parcela
-        cobranca_dict['saldo_devedor_calculado'] = saldo_devedor_calculado - (cobranca_dict['valor_pago'] or 0)
+        
+        # CORREÇÃO: Atribui direto o saldo calculado das parcelas, sem subtrair o total pago da cobrança novamente
+        cobranca_dict['saldo_devedor_calculado'] = max(saldo_devedor_calculado, 0)
         
         # Para compatibilidade com template existente
         cobranca_dict['valor_multa'] = 0  # Multas agora são por parcela
         cobranca_dict['total_a_pagar'] = cobranca_dict['saldo_devedor_calculado']
         cobranca_dict['saldo_devedor'] = cobranca_dict['saldo_devedor_calculado']
-        cobranca_dict['dias_atraso'] = max([(hoje - p['data_vencimento']).days for p in parcelas_pendentes if hoje > p['data_vencimento']], default=0)
+        cobranca_dict['dias_atraso'] = dias_atraso_max
         
         cobrancas_atualizadas.append(cobranca_dict)
     
@@ -619,7 +636,8 @@ def index():
             
             for parcela in parcelas_pendentes:
                 valor_parcela_atualizado = parcela['valor'] + (parcela['multa_manual'] or 0)
-                saldo_devedor_cliente += valor_parcela_atualizado
+                valor_pago_parcela = parcela.get('valor_pago') or 0
+                saldo_devedor_cliente += (valor_parcela_atualizado - valor_pago_parcela)
         
         # Adiciona o valor calculado dinamicamente ao objeto do cliente
         cliente['saldo_devedor_total'] = saldo_devedor_cliente
@@ -1801,8 +1819,6 @@ def editar_data_parcela(id):
     finally:
         cur.close()
         conn.close()
-    
-    return redirect(url_for('visualizar_cliente', cliente_id=parcela['cliente_id']))
     
 @app.route('/parcela/<int:id>/forcar_baixa', methods=['POST'])
 @login_required
