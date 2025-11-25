@@ -1803,7 +1803,90 @@ def editar_data_parcela(id):
         conn.close()
     
     return redirect(url_for('visualizar_cliente', cliente_id=parcela['cliente_id']))
-
+    
+@app.route('/parcela/<int:id>/forcar_baixa', methods=['POST'])
+@login_required
+def forcar_baixa_parcela(id):
+    """Força a baixa de uma parcela manualmente, ajustando valores se necessário."""
+    conn = get_db()
+    cur = conn.cursor(row_factory=dict_row)
+    
+    # Buscar parcela
+    cur.execute('SELECT * FROM parcelas WHERE id = %s', (id,))
+    parcela = cur.fetchone()
+    
+    if not parcela:
+        flash('Parcela não encontrada.', 'danger')
+        cur.close()
+        conn.close()
+        return redirect(url_for('index'))
+        
+    try:
+        valor_devido = parcela['valor'] + (parcela['multa_manual'] or 0)
+        valor_pago_atual = parcela['valor_pago'] or 0
+        
+        # Se o valor pago for menor que o devido, completamos o valor
+        novo_valor_pago = valor_pago_atual
+        diferenca = 0
+        
+        if valor_pago_atual < valor_devido:
+            novo_valor_pago = valor_devido
+            diferenca = novo_valor_pago - valor_pago_atual
+        
+        # Atualiza a parcela para Pago
+        cur.execute('''
+            UPDATE parcelas 
+            SET status='Pago', valor_pago=%s, 
+                data_pagamento = COALESCE(data_pagamento, CURRENT_DATE),
+                atualizado_em=CURRENT_TIMESTAMP
+            WHERE id=%s
+        ''', (novo_valor_pago, id))
+        
+        # Se houve diferença de valor, atualiza a cobrança pai
+        if diferenca > 0:
+            cur.execute('''
+                UPDATE cobrancas 
+                SET valor_pago = COALESCE(valor_pago, 0) + %s, atualizado_em=CURRENT_TIMESTAMP
+                WHERE id=%s
+            ''', (diferenca, parcela['cobranca_id']))
+            
+        # Verifica status da cobrança pai
+        cur.execute('SELECT COUNT(*) as total, SUM(CASE WHEN status = \'Pago\' THEN 1 ELSE 0 END) as pagas FROM parcelas WHERE cobranca_id = %s', (parcela['cobranca_id'],))
+        stats = cur.fetchone()
+        
+        # Se todas pagas (total == pagas), fecha a cobrança
+        if stats['total'] == stats['pagas']:
+             cur.execute('''
+                UPDATE cobrancas 
+                SET status='Pago', data_pagamento=CURRENT_DATE, atualizado_em=CURRENT_TIMESTAMP
+                WHERE id=%s
+            ''', (parcela['cobranca_id'],))
+        
+        # Registra histórico
+        cur.execute('''
+            INSERT INTO historico_pagamentos (cobranca_id, cliente_id, valor_pago, forma_pagamento, observacoes, usuario_id)
+            VALUES (%s, %s, %s, %s, %s, %s)
+        ''', (parcela['cobranca_id'], parcela.get('cliente_id') or 0, 0, 'Sistema', f'Baixa forçada/Correção da parcela {parcela["numero_parcela"]}', session.get('usuario_id')))
+        
+        conn.commit()
+        flash(f'Parcela {parcela["numero_parcela"]} baixada manualmente com sucesso.', 'success')
+        
+        # Tenta redirecionar para o cliente se tiver o ID
+        cur.execute('SELECT cliente_id FROM cobrancas WHERE id = %s', (parcela['cobranca_id'],))
+        cobranca = cur.fetchone()
+        cliente_id = cobranca['cliente_id'] if cobranca else None
+        
+    except Exception as e:
+        conn.rollback()
+        flash(f'Erro ao forçar baixa: {str(e)}', 'danger')
+        cliente_id = None
+    finally:
+        cur.close()
+        conn.close()
+    
+    if cliente_id:
+        return redirect(url_for('visualizar_cliente', cliente_id=cliente_id))
+    return redirect(url_for('index'))
 @app.route('/cobrancas/editar/<int:id>', methods=['GET', 'POST'])
 @login_required
 def editar_cobranca(id):
