@@ -577,7 +577,6 @@ def index():
         
         dias_atraso_max = 0
         for parcela in parcelas_pendentes:
-            # CORREÇÃO AQUI: Calcula o restante de cada parcela individualmente
             valor_total_parcela = parcela['valor'] + (parcela['multa_manual'] or 0)
             valor_pago_parcela = parcela.get('valor_pago') or 0
             
@@ -594,8 +593,10 @@ def index():
         # Adiciona atributos dinâmicos à cobrança para exibição consistente
         cobranca_dict['multa_aplicada'] = 0  # Multas agora são por parcela
         
-        # CORREÇÃO: Atribui direto o saldo calculado das parcelas, sem subtrair o total pago da cobrança novamente
+        # --- CORREÇÃO APLICADA AQUI ---
+        # Usamos max(0) para garantir que nunca seja negativo, e NÃO subtraímos cobranca_dict['valor_pago'] novamente
         cobranca_dict['saldo_devedor_calculado'] = max(saldo_devedor_calculado, 0)
+        # ------------------------------
         
         # Para compatibilidade com template existente
         cobranca_dict['valor_multa'] = 0  # Multas agora são por parcela
