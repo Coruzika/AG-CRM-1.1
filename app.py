@@ -1828,8 +1828,13 @@ def forcar_baixa_parcela(id):
     conn = get_db()
     cur = conn.cursor(row_factory=dict_row)
     
-    # Buscar parcela
-    cur.execute('SELECT * FROM parcelas WHERE id = %s', (id,))
+    # CORREÇÃO: Faz o JOIN com a tabela cobrancas para pegar o cliente_id corretamente
+    cur.execute('''
+        SELECT p.*, c.cliente_id 
+        FROM parcelas p
+        JOIN cobrancas c ON p.cobranca_id = c.id
+        WHERE p.id = %s
+    ''', (id,))
     parcela = cur.fetchone()
     
     if not parcela:
@@ -1880,18 +1885,17 @@ def forcar_baixa_parcela(id):
             ''', (parcela['cobranca_id'],))
         
         # Registra histórico
+        # CORREÇÃO: Agora parcela['cliente_id'] existe e tem o valor correto
         cur.execute('''
             INSERT INTO historico_pagamentos (cobranca_id, cliente_id, valor_pago, forma_pagamento, observacoes, usuario_id)
             VALUES (%s, %s, %s, %s, %s, %s)
-        ''', (parcela['cobranca_id'], parcela.get('cliente_id') or 0, 0, 'Sistema', f'Baixa forçada/Correção da parcela {parcela["numero_parcela"]}', session.get('usuario_id')))
+        ''', (parcela['cobranca_id'], parcela['cliente_id'], 0, 'Sistema', f'Baixa forçada/Correção da parcela {parcela["numero_parcela"]}', session.get('usuario_id')))
         
         conn.commit()
         flash(f'Parcela {parcela["numero_parcela"]} baixada manualmente com sucesso.', 'success')
         
         # Tenta redirecionar para o cliente se tiver o ID
-        cur.execute('SELECT cliente_id FROM cobrancas WHERE id = %s', (parcela['cobranca_id'],))
-        cobranca = cur.fetchone()
-        cliente_id = cobranca['cliente_id'] if cobranca else None
+        cliente_id = parcela['cliente_id']
         
     except Exception as e:
         conn.rollback()
