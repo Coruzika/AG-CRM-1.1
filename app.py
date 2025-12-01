@@ -449,7 +449,7 @@ def logout():
     return redirect(url_for('login'))
 
 # --- Rotas do Dashboard ---
-# --- Rotas do Dashboard ---
+# --- R# --- Rotas do Dashboard ---
 @app.route('/')
 @login_required
 def index():
@@ -461,10 +461,25 @@ def index():
     cur.execute('SELECT COUNT(*) as count FROM clientes')
     total_clientes = cur.fetchone()['count']
     
+    # KPI: Cobranças Pendentes (Contratos ativos)
     cur.execute("SELECT COUNT(*) as count FROM cobrancas WHERE status = 'Pendente'")
     cobrancas_pendentes = cur.fetchone()['count']
     
-    cur.execute("SELECT COUNT(*) as count FROM cobrancas WHERE status = 'Pendente' AND data_vencimento < CURRENT_DATE")
+    # KPI: Cobranças Vencidas (CORREÇÃO DE LÓGICA)
+    # Considera vencida se:
+    # 1. For cobrança Única e a data já passou
+    # 2. For Parcelada e tiver pelo menos uma parcela pendente vencida
+    cur.execute("""
+        SELECT COUNT(DISTINCT c.id) as count 
+        FROM cobrancas c
+        LEFT JOIN parcelas p ON p.cobranca_id = c.id
+        WHERE c.status = 'Pendente' 
+          AND (
+            (c.tipo_cobranca = 'Única' AND c.data_vencimento < CURRENT_DATE)
+            OR 
+            (c.tipo_cobranca = 'Parcelada' AND p.status = 'Pendente' AND p.data_vencimento < CURRENT_DATE)
+          )
+    """)
     cobrancas_vencidas = cur.fetchone()['count']
     
     # Contagem correta: Número de parcelas que foram individualmente pagas
@@ -499,7 +514,6 @@ def index():
             saldo_devedor_total += (valor_parcela_atualizado - valor_pago_parcela)
     
     # Calcular total recebido no mês atual
-    # Usa historico_pagamentos pois é o log unificado de todos os pagamentos (avulsos e parcelas)
     cur.execute("SELECT COALESCE(SUM(valor_pago), 0) as total FROM historico_pagamentos WHERE DATE(data_pagamento) >= %s", (primeiro_dia_mes,))
     total_recebido_mes = cur.fetchone()['total']
     
@@ -562,7 +576,6 @@ def index():
     cobrancas = cur.fetchall()
     
     # Calcular valores atualizados para cada cobrança usando nova lógica por parcela
-    hoje = date.today()
     cobrancas_atualizadas = []
     for cobranca in cobrancas:
         cobranca_dict = dict(cobranca)
@@ -580,33 +593,23 @@ def index():
             valor_total_parcela = parcela['valor'] + (parcela['multa_manual'] or 0)
             valor_pago_parcela = parcela.get('valor_pago') or 0
             
-            # O que falta pagar desta parcela específica
             restante_parcela = valor_total_parcela - valor_pago_parcela
             saldo_devedor_calculado += restante_parcela
             
-            # Calcula dias de atraso
             if hoje > parcela['data_vencimento']:
                 dias = (hoje - parcela['data_vencimento']).days
                 if dias > dias_atraso_max:
                     dias_atraso_max = dias
         
-        # Adiciona atributos dinâmicos à cobrança para exibição consistente
-        cobranca_dict['multa_aplicada'] = 0  # Multas agora são por parcela
-        
-        # --- CORREÇÃO APLICADA AQUI ---
-        # Usamos max(0) para garantir que nunca seja negativo, e NÃO subtraímos cobranca_dict['valor_pago'] novamente
+        cobranca_dict['multa_aplicada'] = 0
         cobranca_dict['saldo_devedor_calculado'] = max(saldo_devedor_calculado, 0)
-        # ------------------------------
-        
-        # Para compatibilidade com template existente
-        cobranca_dict['valor_multa'] = 0  # Multas agora são por parcela
+        cobranca_dict['valor_multa'] = 0
         cobranca_dict['total_a_pagar'] = cobranca_dict['saldo_devedor_calculado']
         cobranca_dict['saldo_devedor'] = cobranca_dict['saldo_devedor_calculado']
         cobranca_dict['dias_atraso'] = dias_atraso_max
         
         cobrancas_atualizadas.append(cobranca_dict)
     
-    # --- NOVA CONSULTA ---
     # Buscar clientes com parcelas vencidas e pendentes
     cur.execute('''
         SELECT DISTINCT c.*
@@ -619,20 +622,13 @@ def index():
     ''', (hoje,))
     clientes_inadimplentes = cur.fetchall()
     
-    # Calcular saldo devedor para cada cliente inadimplente
     for cliente in clientes_inadimplentes:
         saldo_devedor_cliente = 0
-        
-        # Buscar todas as cobranças não pagas deste cliente
         cur.execute("SELECT * FROM cobrancas WHERE cliente_id = %s AND status = 'Pendente'", (cliente['id'],))
         cobrancas_abertas = cur.fetchall()
         
         for cobranca in cobrancas_abertas:
-            # Buscar parcelas pendentes desta cobrança
-            cur.execute('''
-                SELECT * FROM parcelas 
-                WHERE cobranca_id = %s AND status = 'Pendente'
-            ''', (cobranca['id'],))
+            cur.execute("SELECT * FROM parcelas WHERE cobranca_id = %s AND status = 'Pendente'", (cobranca['id'],))
             parcelas_pendentes = cur.fetchall()
             
             for parcela in parcelas_pendentes:
@@ -640,10 +636,7 @@ def index():
                 valor_pago_parcela = parcela.get('valor_pago') or 0
                 saldo_devedor_cliente += (valor_parcela_atualizado - valor_pago_parcela)
         
-        # Adiciona o valor calculado dinamicamente ao objeto do cliente
         cliente['saldo_devedor_total'] = saldo_devedor_cliente
-    
-    # --- FIM DA NOVA CONSULTA ---
 
     cur.close()
     conn.close()
@@ -1281,11 +1274,24 @@ def registrar_pagamento(id):
     
     # Atualizar o total pago na cobrança
     novo_valor_pago = (cobranca['valor_pago'] or 0) + valor_a_pagar
+    
+    # Verificar se quitou (com tolerância de centavos)
+    valor_total_devido = (cobranca['valor_total'] if cobranca['valor_total'] else cobranca['valor_original'])
+    novo_status = cobranca['status']
+    data_pagamento_sql = cobranca['data_pagamento']
+    
+    if novo_valor_pago >= (valor_total_devido - 0.05):
+        novo_status = 'Pago'
+        data_pagamento_sql = date.today()
+        flash(f'Cobrança quitada com sucesso!', 'success')
+    else:
+        flash(f'Pagamento parcial de R$ {valor_a_pagar:.2f} registrado.', 'info')
+
     cur.execute('''
         UPDATE cobrancas 
-        SET valor_pago=%s, atualizado_em=CURRENT_TIMESTAMP
+        SET valor_pago=%s, status=%s, data_pagamento=%s, atualizado_em=CURRENT_TIMESTAMP
         WHERE id=%s
-    ''', (novo_valor_pago, id))
+    ''', (novo_valor_pago, novo_status, data_pagamento_sql, id))
     
     # Registrar também no histórico de pagamentos para compatibilidade
     cur.execute('''
@@ -1296,7 +1302,7 @@ def registrar_pagamento(id):
     conn.commit()
     cur.close()
     conn.close()
-    flash(f'Pagamento de R$ {valor_a_pagar:.2f} registrado com sucesso.', 'info')
+    
     return redirect(url_for('visualizar_cliente', cliente_id=cobranca['cliente_id']))
 
 
