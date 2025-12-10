@@ -1402,6 +1402,135 @@ def visualizar_pagamentos_cobranca(cobranca_id):
 
 
 
+@app.route('/parcela/<int:id>/pagar', methods=['POST'])
+@login_required
+def marcar_parcela_paga(id):
+    """Registra pagamento (total ou parcial) de uma parcela."""
+    conn = get_db()
+    cur = conn.cursor(row_factory=dict_row)
+    
+    try:
+        cur.execute('''
+            SELECT p.*, 
+                   c.cliente_id, 
+                   c.valor_total, 
+                   c.valor_original, 
+                   COALESCE(c.valor_pago, 0) AS valor_pago_cobranca
+            FROM parcelas p
+            JOIN cobrancas c ON p.cobranca_id = c.id
+            WHERE p.id = %s
+        ''', (id,))
+        parcela = cur.fetchone()
+        
+        if not parcela:
+            flash('Parcela não encontrada.', 'danger')
+            return redirect(url_for('index'))
+        
+        # Valores base da parcela
+        valor_devido = (Decimal(str(parcela['valor'] or 0)) + Decimal(str(parcela.get('multa_manual') or 0))).quantize(Decimal('0.01'))
+        valor_pago_atual = Decimal(str(parcela.get('valor_pago') or 0)).quantize(Decimal('0.01'))
+        saldo_restante = (valor_devido - valor_pago_atual).quantize(Decimal('0.01'))
+        if saldo_restante < 0:
+            saldo_restante = Decimal('0.00')
+        
+        # Valor informado no formulário (permitir parcial; vazio = saldo restante)
+        valor_informado = (request.form.get('valor_pago') or '').strip()
+        if valor_informado:
+            try:
+                valor_a_pagar = Decimal(str(valor_informado).replace(',', '.')).quantize(Decimal('0.01'))
+            except (InvalidOperation, ValueError):
+                flash('Valor informado inválido.', 'danger')
+                return redirect(url_for('visualizar_cliente', cliente_id=parcela['cliente_id']))
+        else:
+            valor_a_pagar = saldo_restante
+        
+        if valor_a_pagar <= 0:
+            flash('O valor do pagamento deve ser maior que zero.', 'warning')
+            return redirect(url_for('visualizar_cliente', cliente_id=parcela['cliente_id']))
+        
+        # Impede pagamentos acima do saldo (com tolerância de centavos)
+        tolerancia = Decimal('0.01')
+        if valor_a_pagar - saldo_restante > tolerancia:
+            flash('O valor pago não pode exceder o saldo da parcela.', 'warning')
+            return redirect(url_for('visualizar_cliente', cliente_id=parcela['cliente_id']))
+        if valor_a_pagar > saldo_restante:
+            valor_a_pagar = saldo_restante
+        
+        # Calcula novo acumulado e status
+        valor_pago_total = (valor_pago_atual + valor_a_pagar).quantize(Decimal('0.01'))
+        quitada = valor_pago_total + tolerancia >= valor_devido
+        status_parcela = 'Pago' if quitada else 'Pendente'
+        data_pagamento = date.today() if quitada else parcela.get('data_pagamento')
+        
+        # Atualiza parcela
+        cur.execute('''
+            UPDATE parcelas
+            SET valor_pago=%s,
+                status=%s,
+                data_pagamento=%s,
+                atualizado_em=CURRENT_TIMESTAMP
+            WHERE id=%s
+        ''', (float(valor_pago_total), status_parcela, data_pagamento, id))
+        
+        # Atualiza cobrança pai (valor acumulado)
+        novo_valor_cobranca = (Decimal(str(parcela['valor_pago_cobranca'])).quantize(Decimal('0.01')) + valor_a_pagar).quantize(Decimal('0.01'))
+        cur.execute('''
+            UPDATE cobrancas
+            SET valor_pago=%s,
+                atualizado_em=CURRENT_TIMESTAMP
+            WHERE id=%s
+        ''', (float(novo_valor_cobranca), parcela['cobranca_id']))
+        
+        # Histórico do pagamento da parcela
+        cur.execute('''
+            INSERT INTO historico_pagamentos (cobranca_id, cliente_id, valor_pago, forma_pagamento, observacoes, usuario_id)
+            VALUES (%s, %s, %s, %s, %s, %s)
+        ''', (
+            parcela['cobranca_id'],
+            parcela['cliente_id'],
+            float(valor_a_pagar),
+            'Dinheiro',
+            f'Pagamento da parcela {parcela["numero_parcela"]}',
+            session.get('usuario_id')
+        ))
+        
+        # Se todas as parcelas estiverem pagas, marca cobrança como quitada
+        cur.execute('''
+            SELECT COUNT(*) AS total,
+                   SUM(CASE WHEN status = 'Pago' THEN 1 ELSE 0 END) AS pagas
+            FROM parcelas
+            WHERE cobranca_id = %s
+        ''', (parcela['cobranca_id'],))
+        status_parcelas = cur.fetchone()
+        
+        if status_parcelas and status_parcelas['total'] > 0 and status_parcelas['pagas'] == status_parcelas['total']:
+            cur.execute('''
+                UPDATE cobrancas
+                SET status='Pago',
+                    data_pagamento=COALESCE(data_pagamento, CURRENT_DATE),
+                    atualizado_em=CURRENT_TIMESTAMP
+                WHERE id=%s
+            ''', (parcela['cobranca_id'],))
+        
+        conn.commit()
+        
+        if quitada:
+            flash(f'Parcela {parcela["numero_parcela"]} quitada com sucesso.', 'success')
+        else:
+            flash(f'Pagamento parcial de R$ {float(valor_a_pagar):.2f} registrado.', 'info')
+        
+        return redirect(url_for('visualizar_cliente', cliente_id=parcela['cliente_id']))
+    
+    except Exception as e:
+        conn.rollback()
+        flash(f'Erro ao registrar pagamento: {str(e)}', 'danger')
+        return redirect(url_for('index'))
+    
+    finally:
+        cur.close()
+        conn.close()
+
+
 @app.route('/parcela/<int:id>/desfazer_pagamento', methods=['POST'])
 @login_required
 def desfazer_pagamento_parcela(id):
