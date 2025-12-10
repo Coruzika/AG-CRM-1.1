@@ -350,6 +350,54 @@ def adm_required(f):
     return decorated_function
 
 # --- Funções Auxiliares ---
+def is_data_bloqueada(data_obj):
+    """
+    Retorna True se a data for Domingo ou feriado de fim de ano bloqueado.
+    Datas bloqueadas: Domingos, 24/12, 25/12, 31/12, 01/01.
+    """
+    # Garante que estamos trabalhando com objeto date
+    if isinstance(data_obj, datetime):
+        d = data_obj.date()
+    else:
+        d = data_obj
+
+    # 1. Bloquear Domingos (6)
+    if d.weekday() == 6:
+        return True
+    
+    # 2. Bloquear Festas de Fim de Ano
+    if (d.month == 12 and d.day in [24, 25, 31]) or \
+       (d.month == 1 and d.day == 1):
+        return True
+        
+    return False
+
+def get_proximo_dia_util(data_obj):
+    """
+    Recebe uma data e retorna a próxima data válida (não bloqueada).
+    Se a data for bloqueada, adiciona +1 dia e verifica novamente em loop
+    até encontrar uma data válida.
+    
+    Datas bloqueadas: Domingos (weekday == 6), 24/12, 25/12, 31/12, 01/01.
+    
+    Args:
+        data_obj: datetime ou date object
+        
+    Returns:
+        date: Próxima data válida
+    """
+    # Garante que estamos trabalhando com objeto date
+    if isinstance(data_obj, datetime):
+        d = data_obj.date()
+    else:
+        d = data_obj
+    
+    # Loop até encontrar uma data válida
+    while is_data_bloqueada(d):
+        d += timedelta(days=1)
+    
+    return d
+
 def calcular_valor_atualizado(cobranca):
     """Calcula o valor atualizado de uma cobrança com juros e multa."""
     if cobranca['status'] != 'Pago' and cobranca['data_vencimento']:
@@ -1138,13 +1186,19 @@ def adicionar_cobranca():
         taxa_juros = float(request.form['taxa_juros'])
         data_primeira_parcela = request.form['data_vencimento']
         
-        # Validar se a data não é domingo
-        data_venc = datetime.strptime(data_primeira_parcela, '%Y-%m-%d')
-        if data_venc.weekday() == 6:  # 6 = domingo (0=segunda, 6=domingo)
-            flash('Domingos não são permitidos para data de vencimento. Selecione outro dia.', 'danger')
+        # Validar data inicial
+        try:
+            data_venc = datetime.strptime(data_primeira_parcela, '%Y-%m-%d')
+        except ValueError:
+            flash('Data inválida.', 'danger')
             return render_template('cobranca_form.html', clientes=clientes, cobranca=None)
         
-        # Determinar número de parcelas baseado na taxa de juros
+        # Impede iniciar contrato em dia bloqueado
+        if is_data_bloqueada(data_venc):
+            flash('A data inicial não pode ser Domingo, nem 24/25/31 de Dezembro ou 01 de Janeiro.', 'danger')
+            return render_template('cobranca_form.html', clientes=clientes, cobranca=None)
+        
+        # Determinar número de parcelas
         if taxa_juros == 30:
             numero_parcelas = 10
         elif taxa_juros == 60:
@@ -1153,7 +1207,7 @@ def adicionar_cobranca():
             flash('Taxa de juros inválida. Use 30% ou 60%.', 'danger')
             return render_template('cobranca_form.html', clientes=clientes, cobranca=None)
         
-        # Calcular valor total com juros
+        # Calcular valores
         valor_devido_total = valor_emprestimo * (1 + (taxa_juros / 100))
         valor_parcela = valor_devido_total / numero_parcelas
         
@@ -1176,9 +1230,8 @@ def adicionar_cobranca():
             data_vencimento_atual = data_venc.date()
             
             for i in range(numero_parcelas):
-                # Pular domingos
-                while data_vencimento_atual.weekday() == 6:  # 6 = domingo
-                    data_vencimento_atual += timedelta(days=1)
+                # Usa get_proximo_dia_util para garantir que a data não seja bloqueada
+                data_vencimento_atual = get_proximo_dia_util(data_vencimento_atual)
                 
                 # Criar a parcela
                 cur.execute('''
@@ -1186,11 +1239,11 @@ def adicionar_cobranca():
                     VALUES (%s, %s, %s, %s, %s)
                 ''', (nova_cobranca_id, i + 1, valor_parcela, data_vencimento_atual, 'Pendente'))
                 
-                # Incrementar para a próxima parcela (próximo dia)
+                # Avança para o próximo dia base
                 data_vencimento_atual += timedelta(days=1)
             
             conn.commit()
-            flash(f'Cobrança criada com sucesso! {numero_parcelas} parcelas diárias foram geradas.', 'success')
+            flash(f'Cobrança criada com sucesso! {numero_parcelas} parcelas geradas (pulando feriados e domingos).', 'success')
             
         except Exception as e:
             conn.rollback()
@@ -1202,6 +1255,8 @@ def adicionar_cobranca():
         return redirect(url_for('index'))
     
     return render_template('cobranca_form.html', clientes=clientes, cobranca=None)
+    
+    
 
 @app.route('/cobranca/<int:cobranca_id>/cancelar', methods=['POST'])
 @login_required
@@ -1345,150 +1400,7 @@ def visualizar_pagamentos_cobranca(cobranca_id):
                          cobranca=cobranca, 
                          pagamentos=pagamentos)
 
-@app.route('/parcela/<int:id>/pagar', methods=['POST'])
-@login_required
-def marcar_parcela_paga(id):
-    """Marca uma parcela como paga e atualiza o valor_pago da cobrança."""
-    conn = get_db()
-    cur = conn.cursor(row_factory=dict_row)
-    
-    # Buscar parcela e cobrança relacionada
-    cur.execute('''
-        SELECT p.*, c.cliente_id, c.valor_total
-        FROM parcelas p
-        JOIN cobrancas c ON p.cobranca_id = c.id
-        WHERE p.id = %s
-    ''', (id,))
-    parcela = cur.fetchone()
-    
-    if not parcela:
-        flash('Parcela não encontrada.', 'danger')
-        cur.close()
-        conn.close()
-        return redirect(url_for('index'))
-    
-    # Recálculo robusto do valor devido: valor original + multa_manual (trata None como 0)
-    valor_original = Decimal(str(parcela['valor']))
-    multa_manual = Decimal(str(parcela.get('multa_manual') or 0))
-    valor_devido = valor_original + multa_manual
-    
-    # Soma correta do valor pago: valor_pago existente (trata None como 0) + valor_recebido_agora
-    valor_pago_existente = Decimal(str(parcela.get('valor_pago') or 0))
-    saldo_restante = max(valor_devido - valor_pago_existente, Decimal('0.00'))
 
-    if parcela['status'] == 'Pago' or saldo_restante <= 0:
-        flash('Esta parcela já foi paga.', 'info')
-        cur.close()
-        conn.close()
-        return redirect(url_for('visualizar_cliente', cliente_id=parcela['cliente_id']))
-
-    # Obter valor recebido agora do formulário
-    valor_input = request.form.get('valor_pago')
-    valor_recebido_agora = None
-    if valor_input:
-        valor_normalizado = str(valor_input).replace(',', '.').strip()
-        if valor_normalizado:
-            try:
-                valor_recebido_agora = Decimal(valor_normalizado)
-            except InvalidOperation:
-                cur.close()
-                conn.close()
-                flash('Valor de pagamento inválido.', 'danger')
-                return redirect(url_for('visualizar_cliente', cliente_id=parcela['cliente_id']))
-            if valor_recebido_agora <= 0:
-                valor_recebido_agora = None
-
-    # Se não foi informado valor, usar o saldo restante completo
-    if not valor_recebido_agora:
-        valor_recebido_agora = saldo_restante
-
-    # Limitar o valor recebido ao saldo restante disponível
-    if saldo_restante > 0 and valor_recebido_agora > saldo_restante:
-        valor_recebido_agora = saldo_restante
-
-    valor_recebido_agora = valor_recebido_agora.quantize(Decimal('0.01'))
-
-    if valor_recebido_agora <= 0:
-        flash('Não há saldo pendente para esta parcela.', 'info')
-        cur.close()
-        conn.close()
-        return redirect(url_for('visualizar_cliente', cliente_id=parcela['cliente_id']))
-
-    # Calcular total pago após esta transação (cumulativo)
-    valor_pago_total = (valor_pago_existente + valor_recebido_agora).quantize(Decimal('0.01'))
-    if valor_pago_total > valor_devido:
-        valor_pago_total = valor_devido
-    
-    # Comparação com tolerância para evitar erros de ponto flutuante (FIX PRINCIPAL)
-    tolerancia = Decimal('0.01')
-    if valor_pago_total + tolerancia >= valor_devido:
-        status_novo = 'Pago'
-    else:
-        status_novo = 'Pendente'
-    
-    data_pagamento_valor = date.today() if status_novo == 'Pago' else parcela.get('data_pagamento')
-    
-    try:
-        # Atualizar parcela: valor_pago cumulativo e status calculado
-        cur.execute('''
-            UPDATE parcelas 
-            SET status=%s,
-                valor_pago=%s,
-                forma_pagamento='Dinheiro',
-                data_pagamento=%s,
-                atualizado_em=CURRENT_TIMESTAMP
-            WHERE id=%s
-        ''', (status_novo, valor_pago_total, data_pagamento_valor, id))
-        
-        # Atualizar valor pago na cobrança principal (incrementa com o valor desta transação)
-        cur.execute('''
-            UPDATE cobrancas 
-            SET valor_pago = COALESCE(valor_pago, 0) + %s, atualizado_em=CURRENT_TIMESTAMP
-            WHERE id=%s
-        ''', (valor_recebido_agora, parcela['cobranca_id']))
-        
-        # Registrar no histórico de pagamentos apenas com o valor pago NESTA transação (não cumulativo)
-        cur.execute('''
-            INSERT INTO historico_pagamentos (cobranca_id, cliente_id, valor_pago, forma_pagamento, observacoes, usuario_id)
-            VALUES (%s, %s, %s, %s, %s, %s)
-        ''', (
-            parcela['cobranca_id'],
-            parcela['cliente_id'],
-            valor_recebido_agora,
-            'Dinheiro',
-            f'Pagamento da parcela {parcela["numero_parcela"]}',
-            session.get('usuario_id')
-        ))
-        
-        # Verificar se todas as parcelas da cobrança foram pagas
-        cur.execute('SELECT COUNT(*) as total, SUM(CASE WHEN status = \'Pago\' THEN 1 ELSE 0 END) as pagas FROM parcelas WHERE cobranca_id = %s', (parcela['cobranca_id'],))
-        status_parcelas = cur.fetchone()
-        
-        if status_parcelas['pagas'] == status_parcelas['total']:
-            # Todas as parcelas foram pagas, atualizar cobrança principal
-            cur.execute('''
-                UPDATE cobrancas 
-                SET status='Pago', data_pagamento=CURRENT_DATE, atualizado_em=CURRENT_TIMESTAMP
-                WHERE id=%s
-            ''', (parcela['cobranca_id'],))
-            flash(f'Parcela {parcela["numero_parcela"]} paga. Todas as parcelas foram pagas e a cobrança foi liquidada!', 'success')
-        else:
-            if status_novo == 'Pago':
-                flash(f'Parcela {parcela["numero_parcela"]} quitada com pagamento de R$ {float(valor_recebido_agora):.2f}.', 'success')
-            else:
-                saldo_pos_pagamento = max(float((valor_devido - valor_pago_total).quantize(Decimal('0.01'))), 0.0)
-                flash(f'Pagamento parcial de R$ {float(valor_recebido_agora):.2f} registrado para a parcela {parcela["numero_parcela"]}. Saldo restante: R$ {saldo_pos_pagamento:.2f}.', 'info')
-        
-        conn.commit()
-        
-    except Exception as e:
-        conn.rollback()
-        flash(f'Erro ao processar pagamento: {str(e)}', 'danger')
-    finally:
-        cur.close()
-        conn.close()
-    
-    return redirect(url_for('visualizar_cliente', cliente_id=parcela['cliente_id']))
 
 @app.route('/parcela/<int:id>/desfazer_pagamento', methods=['POST'])
 @login_required
@@ -1778,9 +1690,9 @@ def editar_data_parcela(id):
     conn = get_db()
     cur = conn.cursor(row_factory=dict_row)
     
-    # Buscar parcela e cobrança relacionada
+    # Buscar parcela
     cur.execute('''
-        SELECT p.*, c.cliente_id
+        SELECT p.*, c.cliente_id 
         FROM parcelas p
         JOIN cobrancas c ON p.cobranca_id = c.id
         WHERE p.id = %s
@@ -1804,12 +1716,11 @@ def editar_data_parcela(id):
     try:
         nova_data = datetime.strptime(nova_data_str, '%Y-%m-%d').date()
         
-        # Validação para não permitir data no domingo (opcional, mas recomendado)
-        if nova_data.weekday() == 6:  # 6 = Domingo
-            flash('A data de vencimento não pode ser num domingo.', 'warning')
-            cur.close()
-            conn.close()
-            return redirect(url_for('visualizar_cliente', cliente_id=parcela['cliente_id']))
+        # VERIFICAÇÃO CENTRALIZADA - Se a data for bloqueada, calcula a próxima válida
+        if is_data_bloqueada(nova_data):
+            data_valida = get_proximo_dia_util(nova_data)
+            flash(f'Data inválida! Não é permitido vencer em Domingos ou 24/25/31 de Dez e 01 de Jan. A data foi ajustada para {data_valida.strftime("%d/%m/%Y")}.', 'warning')
+            nova_data = data_valida
         
         cur.execute('''
             UPDATE parcelas 
@@ -1818,14 +1729,16 @@ def editar_data_parcela(id):
         ''', (nova_data, id))
         
         conn.commit()
-        flash(f'Data de vencimento da parcela {parcela["numero_parcela"]} atualizada para {nova_data.strftime("%d/%m/%Y")}.', 'success')
-    except ValueError:
-        flash('Formato de data inválido.', 'danger')
+        flash(f'Data alterada para {nova_data.strftime("%d/%m/%Y")}.', 'success')
+        
     except Exception as e:
+        conn.rollback()
         flash(f'Erro ao atualizar data: {str(e)}', 'danger')
     finally:
         cur.close()
         conn.close()
+    
+    return redirect(url_for('visualizar_cliente', cliente_id=parcela['cliente_id']))
     
 @app.route('/parcela/<int:id>/forcar_baixa', methods=['POST'])
 @login_required
@@ -1921,7 +1834,7 @@ def editar_cobranca(id):
     conn = get_db()
     cur = conn.cursor(row_factory=dict_row)
     
-    # Buscar cobrança
+    # Buscar cobrança e cliente
     cur.execute('SELECT * FROM cobrancas WHERE id = %s', (id,))
     cobranca = cur.fetchone()
     if not cobranca:
@@ -1930,7 +1843,6 @@ def editar_cobranca(id):
         conn.close()
         return redirect(url_for('index'))
     
-    # Buscar cliente da cobrança
     cur.execute('SELECT * FROM clientes WHERE id = %s', (cobranca['cliente_id'],))
     cliente = cur.fetchone()
     if not cliente:
@@ -1941,93 +1853,64 @@ def editar_cobranca(id):
     
     if request.method == 'POST':
         try:
-            # Obter dados do formulário
             valor_emprestimo_str = request.form.get('valor_emprestimo')
             if not valor_emprestimo_str:
-                flash('Valor emprestado é obrigatório.', 'danger')
-                cur.close()
-                conn.close()
-                return render_template('cobranca_form.html', cobranca=cobranca, cliente=cliente)
+                raise ValueError("Valor é obrigatório")
             
             novo_valor_emprestimo = float(valor_emprestimo_str)
             if novo_valor_emprestimo <= 0:
-                flash('Valor emprestado deve ser maior que zero.', 'danger')
+                raise ValueError("Valor deve ser maior que zero")
+            
+            nova_data_str = request.form.get('data_vencimento')
+            if not nova_data_str:
+                raise ValueError("Data é obrigatória")
+                
+            nova_data_vencimento = datetime.strptime(nova_data_str, '%Y-%m-%d').date()
+            
+            # Validação da data inicial contra bloqueios
+            if is_data_bloqueada(nova_data_vencimento):
+                flash('A data inicial não pode ser Domingo, nem 24/25/31 de Dezembro ou 01 de Janeiro.', 'danger')
                 cur.close()
                 conn.close()
                 return render_template('cobranca_form.html', cobranca=cobranca, cliente=cliente)
             
-            nova_data_vencimento_str = request.form.get('data_vencimento')
-            if not nova_data_vencimento_str:
-                flash('Data de vencimento é obrigatória.', 'danger')
-                cur.close()
-                conn.close()
-                return render_template('cobranca_form.html', cobranca=cobranca, cliente=cliente)
-            
-            # Validar formato da data (YYYY-MM-DD)
-            nova_data_vencimento = datetime.strptime(nova_data_vencimento_str, '%Y-%m-%d').date()
-            
-            # Validar se a data não é domingo
-            if nova_data_vencimento.weekday() == 6:  # 6 = Domingo
-                flash('Domingos não são permitidos para data de vencimento. Selecione outro dia.', 'danger')
-                cur.close()
-                conn.close()
-                return render_template('cobranca_form.html', cobranca=cobranca, cliente=cliente)
-            
-            # Obter taxa de juros do formulário (ou usar a existente se não fornecida)
+            # Taxa e parcelas
             taxa_juros_str = request.form.get('taxa_juros')
             if taxa_juros_str:
                 taxa_juros = float(taxa_juros_str)
             else:
                 taxa_juros = cobranca['taxa_juros']
             
-            if not taxa_juros:
-                flash('Taxa de juros é obrigatória.', 'danger')
-                cur.close()
-                conn.close()
-                return render_template('cobranca_form.html', cobranca=cobranca, cliente=cliente)
-            
-            # Determinar número de parcelas baseado na taxa de juros
             if taxa_juros == 30:
                 numero_parcelas = 10
             elif taxa_juros == 60:
                 numero_parcelas = 15
             else:
-                flash('Taxa de juros inválida. Use 30% ou 60%.', 'danger')
-                cur.close()
-                conn.close()
-                return render_template('cobranca_form.html', cobranca=cobranca, cliente=cliente)
-            
-            # Calcular valor total com juros
+                # Mantém o original se não for padrão
+                numero_parcelas = cobranca['numero_parcelas'] or 10
+
             valor_total = novo_valor_emprestimo * (1 + (taxa_juros / 100))
             valor_parcela = valor_total / numero_parcelas
             
-            # Apagar todas as parcelas antigas associadas a esta cobrança
+            # Limpar dados antigos
             cur.execute('DELETE FROM parcelas WHERE cobranca_id = %s', (id,))
-            
-            # Apagar histórico de pagamentos da cobrança (já que as parcelas foram apagadas)
             cur.execute('DELETE FROM historico_pagamentos WHERE cobranca_id = %s', (id,))
             
-            # Re-gerar as parcelas diárias com a nova data inicial
+            # Regenerar parcelas pulando dias bloqueados
             data_vencimento_atual = nova_data_vencimento
             
             for i in range(numero_parcelas):
-                # Pular domingos
-                while data_vencimento_atual.weekday() == 6:  # 6 = domingo
-                    data_vencimento_atual += timedelta(days=1)
+                # Usa get_proximo_dia_util para garantir que a data não seja bloqueada
+                data_vencimento_atual = get_proximo_dia_util(data_vencimento_atual)
                 
-                # Criar a parcela
                 cur.execute('''
                     INSERT INTO parcelas (cobranca_id, numero_parcela, valor, data_vencimento, status)
                     VALUES (%s, %s, %s, %s, %s)
                 ''', (id, i + 1, valor_parcela, data_vencimento_atual, 'Pendente'))
                 
-                # Incrementar para a próxima parcela (próximo dia)
                 data_vencimento_atual += timedelta(days=1)
             
             # Atualizar a cobrança principal
-            # Obter a data da última parcela para atualizar data_vencimento da cobrança
-            ultima_data_vencimento = data_vencimento_atual - timedelta(days=1)
-            
             cur.execute('''
                 UPDATE cobrancas 
                 SET valor_original=%s, valor_total=%s, taxa_juros=%s, data_vencimento=%s, 
@@ -2035,14 +1918,11 @@ def editar_cobranca(id):
                 WHERE id=%s
             ''', (novo_valor_emprestimo, valor_total, taxa_juros, nova_data_vencimento, numero_parcelas, id))
             
-            # Confirmar transação
             conn.commit()
-            
-            flash(f'Cobrança atualizada com sucesso! {numero_parcelas} parcelas foram re-geradas a partir da nova data.', 'success')
+            flash('Cobrança atualizada e parcelas regeneradas corretamente (respeitando feriados).', 'success')
             
         except ValueError as e:
-            conn.rollback()
-            flash(f'Erro ao processar dados: {str(e)}', 'danger')
+            flash(f'Erro de validação: {str(e)}', 'danger')
         except Exception as e:
             conn.rollback()
             flash(f'Erro ao atualizar cobrança: {str(e)}', 'danger')
@@ -2055,15 +1935,6 @@ def editar_cobranca(id):
     cur.close()
     conn.close()
     return render_template('cobranca_form.html', cobranca=cobranca, cliente=cliente)
-
-
-
-
-
-
-
-
-
 
 
 
@@ -2537,6 +2408,65 @@ def utility_processor():
         can_access_admin=can_access_admin
     )
 
+@app.route('/fix_datas_festivas')
+@login_required
+def fix_datas_festivas():
+    """Rota de emergência para corrigir parcelas em datas festivas."""
+    conn = get_db()
+    cur = conn.cursor(row_factory=dict_row)
+    
+    # Busca TODAS as parcelas pendentes de Dezembro e Janeiro
+    cur.execute("""
+        SELECT id, cobranca_id, data_vencimento FROM parcelas 
+        WHERE status != 'Pago' 
+        AND (EXTRACT(MONTH FROM data_vencimento) = 12 OR EXTRACT(MONTH FROM data_vencimento) = 1)
+    """)
+    parcelas = cur.fetchall()
+    
+    log = []
+    alteradas = 0
+    
+    for p in parcelas:
+        d = p['data_vencimento']
+        # Garante que é um objeto date python
+        if isinstance(d, datetime): d = d.date()
+        
+        nova_data = None
+        
+        # Regras de Correção
+        # Natal: 24 ou 25 -> vira 26
+        if d.month == 12 and d.day in [24, 25]:
+            nova_data = date(d.year, 12, 26)
+            
+        # Ano Novo: 31/12 -> vira 02/01 do próximo ano
+        elif d.month == 12 and d.day == 31:
+            nova_data = date(d.year + 1, 1, 2)
+            
+        # Ano Novo: 01/01 -> vira 02/01 do mesmo ano
+        elif d.month == 1 and d.day == 1:
+            nova_data = date(d.year, 1, 2)
+            
+        if nova_data:
+            # Atualiza no banco
+            cur.execute("UPDATE parcelas SET data_vencimento = %s WHERE id = %s", (nova_data, p['id']))
+            # Tenta atualizar a cobrança pai se as datas coincidirem
+            cur.execute("UPDATE cobrancas SET data_vencimento = %s WHERE id = %s AND data_vencimento = %s", (nova_data, p['cobranca_id'], d))
+            
+            log.append(f"Parcela {p['id']} corrigida: {d} -> {nova_data}")
+            alteradas += 1
+            
+    conn.commit()
+    cur.close()
+    conn.close()
+    
+    html_response = f"""
+    <h1>Relatório de Correção</h1>
+    <p><strong>Total corrigido:</strong> {alteradas} parcelas.</p>
+    <ul>
+    """ + "".join([f"<li>{msg}</li>" for msg in log]) + "</ul><br><a href='/'>Voltar ao Dashboard</a>"
+    
+    return html_response
+    
 # --- Execução da Aplicação ---
 if __name__ == '__main__':
     # Verificar se DATABASE_URL está configurada
