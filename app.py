@@ -18,7 +18,7 @@ from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill
 from openpyxl.utils import get_column_letter
 from decimal import Decimal, InvalidOperation
-from app.utils.logger_backup import audit_log
+from core.utils.logger_backup import audit_log
 
 # Carregar variáveis de ambiente do arquivo .env se existir
 try:

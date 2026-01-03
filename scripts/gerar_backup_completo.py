@@ -20,7 +20,7 @@ if root_dir not in sys.path:
     sys.path.insert(0, root_dir)
 
 # Importar diretamente do arquivo app.py usando importlib
-# Isso evita conflito com o pacote app/ (pasta)
+# Isso evita conflito com o pacote core/ (pasta)
 import importlib.util
 app_path = os.path.join(root_dir, 'app.py')
 
