@@ -1,2 +1,9 @@
 .env
 node_modules
+# Ignorar arquivos de backup e logs
+*.jsonl
+finanflow_backup.jsonl
+
+# Ignorar arquivos compilados do Python e pastas de cache
+__pycache__/
+*.pyc

@@ -18,6 +18,7 @@ from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill
 from openpyxl.utils import get_column_letter
 from decimal import Decimal, InvalidOperation
+from app.utils.logger_backup import audit_log
 
 # Carregar variáveis de ambiente do arquivo .env se existir
 try:
@@ -780,6 +781,7 @@ def listar_clientes():
 
 @app.route('/cliente/adicionar', methods=['GET', 'POST'])
 @login_required
+@audit_log(entity_name='Cliente')
 def adicionar_cliente():
     """Adiciona um novo cliente."""
     if request.method == 'POST':
@@ -994,6 +996,7 @@ def visualizar_cliente(cliente_id):
 
 @app.route('/cliente/<int:cliente_id>/editar', methods=['GET', 'POST'])
 @login_required
+@audit_log(entity_name='Cliente')
 def editar_cliente(cliente_id):
     """Edita um cliente existente."""
     conn = get_db()
@@ -1140,6 +1143,7 @@ def editar_cliente(cliente_id):
 
 @app.route('/cliente/<int:cliente_id>/deletar', methods=['POST'])
 @login_required
+@audit_log(entity_name='Cliente')
 def deletar_cliente(cliente_id):
     """Deleta um cliente e todas suas cobranças relacionadas."""
     conn = get_db()
@@ -1169,6 +1173,7 @@ def deletar_cliente(cliente_id):
 
 @app.route('/cobranca/adicionar', methods=['GET', 'POST'])
 @login_required
+@audit_log(entity_name='Cobrança')
 def adicionar_cobranca():
     """Adiciona uma nova cobrança."""
     conn = get_db()
@@ -1260,6 +1265,7 @@ def adicionar_cobranca():
 
 @app.route('/cobranca/<int:cobranca_id>/cancelar', methods=['POST'])
 @login_required
+@audit_log(entity_name='Cobrança')
 def cancelar_cobranca(cobranca_id):
     """DELETA uma cobrança e todos os seus registros associados (parcelas, pagamentos)."""
     conn = get_db()
@@ -1297,6 +1303,7 @@ def cancelar_cobranca(cobranca_id):
 
 @app.route('/cobranca/<int:id>/registrar_pagamento', methods=['POST'])
 @login_required
+@audit_log(entity_name='Pagamento')
 def registrar_pagamento(id):
     """Registra um pagamento genérico para uma cobrança."""
     conn = get_db()
@@ -1404,6 +1411,7 @@ def visualizar_pagamentos_cobranca(cobranca_id):
 
 @app.route('/parcela/<int:id>/pagar', methods=['POST'])
 @login_required
+@audit_log(entity_name='Parcela')
 def marcar_parcela_paga(id):
     """Registra pagamento (total ou parcial) de uma parcela."""
     conn = get_db()
@@ -1533,6 +1541,7 @@ def marcar_parcela_paga(id):
 
 @app.route('/parcela/<int:id>/desfazer_pagamento', methods=['POST'])
 @login_required
+@audit_log(entity_name='Parcela')
 def desfazer_pagamento_parcela(id):
     """Estorna um pagamento de parcela já quitada."""
     conn = get_db()
@@ -1623,6 +1632,7 @@ def desfazer_pagamento_parcela(id):
 
 @app.route('/parcela/<int:id>/editar_pagamento', methods=['POST'])
 @login_required
+@audit_log(entity_name='Parcela')
 def editar_pagamento_parcela(id):
     """Permite ajustar o valor pago de uma parcela já registrada."""
     conn = get_db()
@@ -1759,6 +1769,7 @@ def editar_pagamento_parcela(id):
 
 @app.route('/parcela/<int:id>/editar_multa', methods=['POST'])
 @login_required
+@audit_log(entity_name='Parcela')
 def editar_multa_parcela(id):
     """Edita a multa manual de uma parcela."""
     conn = get_db()
@@ -1814,6 +1825,7 @@ def editar_multa_parcela(id):
 
 @app.route('/parcela/<int:id>/editar_data', methods=['POST'])
 @login_required
+@audit_log(entity_name='Parcela')
 def editar_data_parcela(id):
     """Edita a data de vencimento de uma parcela."""
     conn = get_db()
@@ -1871,6 +1883,7 @@ def editar_data_parcela(id):
     
 @app.route('/parcela/<int:id>/forcar_baixa', methods=['POST'])
 @login_required
+@audit_log(entity_name='Parcela')
 def forcar_baixa_parcela(id):
     """Força a baixa de uma parcela manualmente, ajustando valores se necessário."""
     conn = get_db()
@@ -1958,6 +1971,7 @@ def forcar_baixa_parcela(id):
     return redirect(url_for('index'))
 @app.route('/cobrancas/editar/<int:id>', methods=['GET', 'POST'])
 @login_required
+@audit_log(entity_name='Cobrança')
 def editar_cobranca(id):
     """Edita uma cobrança existente."""
     conn = get_db()
@@ -2085,6 +2099,7 @@ def listar_usuarios():
 @app.route('/usuario/adicionar', methods=['GET', 'POST'])
 @login_required
 @adm_required
+@audit_log(entity_name='Usuário')
 def adicionar_usuario():
     """Adiciona um novo usuário."""
     if request.method == 'POST':
@@ -2120,6 +2135,7 @@ def adicionar_usuario():
 @app.route('/usuario/<int:usuario_id>', methods=['GET', 'POST'])
 @login_required
 @adm_required
+@audit_log(entity_name='Usuário')
 def editar_usuario(usuario_id):
     """Edita um usuário existente."""
     conn = get_db()
@@ -2169,6 +2185,7 @@ def editar_usuario(usuario_id):
 @app.route('/usuario/<int:usuario_id>/deletar', methods=['POST'])
 @login_required
 @adm_required
+@audit_log(entity_name='Usuário')
 def excluir_usuario(usuario_id):
     """Exclui um usuário do sistema."""
     conn = get_db()
