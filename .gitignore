@@ -7,3 +7,4 @@ finanflow_backup.jsonl
 # Ignorar arquivos compilados do Python e pastas de cache
 __pycache__/
 *.pyc
+robo_backup.py

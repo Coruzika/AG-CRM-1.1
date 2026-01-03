@@ -4,7 +4,7 @@ import os
 import sys
 import io
 import csv
-from flask import Flask, render_template, request, redirect, url_for, flash, session, Response, jsonify, send_from_directory, abort
+from flask import Flask, render_template, request, redirect, url_for, flash, session, Response, jsonify, send_from_directory, abort, send_file
 from datetime import datetime, timedelta, date
 from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.utils import secure_filename
@@ -2612,6 +2612,27 @@ def fix_datas_festivas():
     """ + "".join([f"<li>{msg}</li>" for msg in log]) + "</ul><br><a href='/'>Voltar ao Dashboard</a>"
     
     return html_response
+
+@app.route('/api/sync/backup', methods=['GET'])
+def download_backup_api():
+    # Senha fixa para o robô
+    SENHA_ROBO = "finanflow2026_secreto"
+    
+    # Verifica a senha no Header
+    key = request.headers.get('X-Backup-Key')
+    
+    if key != SENHA_ROBO:
+        return jsonify({"error": "Acesso negado. Senha incorreta."}), 403
+        
+    # Caminho do arquivo
+    backup_file = os.path.join(os.getcwd(), 'finanflow_backup.jsonl')
+    
+    if os.path.exists(backup_file):
+        # Envia o arquivo para download
+        return send_file(backup_file, as_attachment=True, download_name='backup.jsonl')
+    else:
+        # Retorna 204 (Sem Conteúdo) se ainda não houver backup
+        return '', 204
     
 # --- Execução da Aplicação ---
 if __name__ == '__main__':
