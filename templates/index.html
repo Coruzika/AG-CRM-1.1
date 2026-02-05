@@ -239,6 +239,10 @@
             --card-gradient-from: #3b82f6;
             --card-gradient-to: #1d4ed8;
         }
+        .stat-card.purple {
+            --card-gradient-from: #8b5cf6;
+            --card-gradient-to: #7c3aed;
+        }
 
         .stat-header {
             display: flex;
@@ -927,6 +931,80 @@
                 </div>
                 <div class="stat-value">R$ {{ "{:,.2f}".format(stats.total_recebido_mes).replace(',', 'X').replace('.', ',').replace('X', '.') }}</div>
                 <div class="stat-label">Recebido este mês</div>
+            </div>
+            
+            <div class="stat-card purple">
+                <div class="stat-header">
+                    <h3>Total Multas Manuais (Em Aberto)</h3>
+                    <div class="stat-icon">
+                        <i data-feather="slash"></i>
+                    </div>
+                </div>
+                <div class="stat-value">R$ {{ "{:,.2f}".format(stats.total_multas_manuais or 0).replace(',', 'X').replace('.', ',').replace('X', '.') }}</div>
+                <div class="stat-label">Multas manuais aplicadas</div>
+            </div>
+        </div>
+
+        <!-- Detalhamento de Multas Manuais -->
+        <div class="table-container" style="margin-bottom: 32px;">
+            <div class="table-header">
+                <h2>
+                    <i data-feather="file-minus" style="width: 20px; height: 20px; margin-right: 8px;"></i>
+                    Detalhamento de Multas Manuais
+                </h2>
+            </div>
+            <div class="table-content">
+                {% if multas_pagination and multas_pagination['items'] %}
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Cliente</th>
+                                <th>Parcela</th>
+                                <th>Vencimento</th>
+                                <th>Valor da Multa</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for item in multas_pagination['items'] %}
+                            <tr>
+                                <td>{{ item.cliente_nome }}</td>
+                                <td>{{ item.numero_parcela }}</td>
+                                <td>{{ item.data_vencimento.strftime('%d/%m/%Y') }}</td>
+                                <td>R$ {{ "{:,.2f}".format(item.multa_manual).replace(',', 'X').replace('.', ',').replace('X', '.') }}</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+
+                    <!-- Paginação -->
+                    <div style="display: flex; justify-content: space-between; align-items: center; padding: 16px 20px; border-top: 1px solid var(--gray-200); background: var(--gray-50);">
+                        <div style="color: var(--gray-500); font-size: 13px;">
+                            Página {{ multas_pagination.page }} de {{ multas_pagination.total_pages }} · 
+                            Total de {{ multas_pagination.total_items }} multas
+                        </div>
+                        <div style="display: flex; gap: 8px;">
+                            {% if multas_pagination.page > 1 %}
+                                <a href="{{ url_for('index', page_multas=multas_pagination.page - 1) }}" class="btn-sm" style="background: var(--gray-200); color: var(--gray-700);">
+                                    <i data-feather="arrow-left" style="width: 12px; height: 12px;"></i>
+                                    Anterior
+                                </a>
+                            {% endif %}
+                            
+                            {% if multas_pagination.page < multas_pagination.total_pages %}
+                                <a href="{{ url_for('index', page_multas=multas_pagination.page + 1) }}" class="btn-sm" style="background: var(--primary-500); color: white;">
+                                    Próximo
+                                    <i data-feather="arrow-right" style="width: 12px; height: 12px;"></i>
+                                </a>
+                            {% endif %}
+                        </div>
+                    </div>
+                {% else %}
+                    <div style="padding: 40px; text-align: center; color: var(--gray-500);">
+                        <i data-feather="check-circle" style="width: 48px; height: 48px; margin-bottom: 16px; color: var(--success-500);"></i>
+                        <h3 style="color: var(--success-600); margin-bottom: 8px;">Nenhuma multa manual cadastrada</h3>
+                        <p>Nenhuma parcela possui multa manual aplicada no momento.</p>
+                    </div>
+                {% endif %}
             </div>
         </div>
 

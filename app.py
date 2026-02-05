@@ -4,7 +4,7 @@ import os
 import sys
 import io
 import csv
-from flask import Flask, render_template, request, redirect, url_for, flash, session, Response, jsonify, send_from_directory, abort, send_file
+from flask import Flask, render_template, request, redirect, url_for, flash, session, Response, jsonify, send_from_directory, abort
 from datetime import datetime, timedelta, date
 from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.utils import secure_filename
@@ -566,6 +566,10 @@ def index():
     cur.execute("SELECT COALESCE(SUM(valor_pago), 0) as total FROM historico_pagamentos WHERE DATE(data_pagamento) >= %s", (primeiro_dia_mes,))
     total_recebido_mes = cur.fetchone()['total']
     
+    # Calcular total de multas manuais (apenas parcelas não pagas com multa_manual > 0)
+    cur.execute("SELECT COALESCE(SUM(multa_manual), 0) AS total FROM parcelas WHERE multa_manual > 0 AND status != 'Pago'")
+    total_multas_manuais = cur.fetchone()['total']
+    
     # Calcular KPIs por empresa
     empresas = ['FH1', 'FH2', 'FH3', 'FH4']
     kpis_por_empresa = {}
@@ -611,6 +615,7 @@ def index():
         'saldo_devedor_total': saldo_devedor_total,
         'total_recebido_mes': total_recebido_mes,
         'kpis_por_empresa': kpis_por_empresa,
+        'total_multas_manuais': total_multas_manuais,
     }
     
     # Cobranças recentes com informações do cliente
@@ -659,6 +664,45 @@ def index():
         
         cobrancas_atualizadas.append(cobranca_dict)
     
+    # Paginação do detalhamento de multas manuais por cliente/parcela
+    try:
+        page_multas = int(request.args.get('page_multas', 1))
+    except (TypeError, ValueError):
+        page_multas = 1
+    if page_multas < 1:
+        page_multas = 1
+    per_page_multas = 5
+    offset_multas = (page_multas - 1) * per_page_multas
+
+    # Total de itens com multa_manual > 0 e não pagas
+    cur.execute("SELECT COUNT(*) AS total FROM parcelas WHERE multa_manual > 0 AND status != 'Pago'")
+    total_multas_itens = cur.fetchone()['total']
+
+    total_multas_pages = (total_multas_itens + per_page_multas - 1) // per_page_multas if total_multas_itens > 0 else 1
+
+    cur.execute("""
+        SELECT 
+            c.nome AS cliente_nome,
+            p.numero_parcela,
+            p.data_vencimento,
+            p.multa_manual
+        FROM parcelas p
+        JOIN cobrancas cob ON p.cobranca_id = cob.id
+        JOIN clientes c ON cob.cliente_id = c.id
+        WHERE p.multa_manual > 0 AND p.status != 'Pago'
+        ORDER BY p.data_vencimento DESC
+        LIMIT %s OFFSET %s
+    """, (per_page_multas, offset_multas))
+    detalhes_multas_manuais = cur.fetchall()
+
+    multas_pagination = {
+        'items': detalhes_multas_manuais,
+        'page': page_multas,
+        'per_page': per_page_multas,
+        'total_items': total_multas_itens,
+        'total_pages': total_multas_pages,
+    }
+    
     # Buscar clientes com parcelas vencidas e pendentes
     cur.execute('''
         SELECT DISTINCT c.*
@@ -694,6 +738,7 @@ def index():
                          stats=stats, 
                          cobrancas=cobrancas_atualizadas,
                          clientes_inadimplentes=clientes_inadimplentes,
+                         multas_pagination=multas_pagination,
                          usuario=session)
 
 # --- Rotas de Clientes ---
@@ -781,7 +826,6 @@ def listar_clientes():
 
 @app.route('/cliente/adicionar', methods=['GET', 'POST'])
 @login_required
-@audit_log(entity_name='Cliente')
 def adicionar_cliente():
     """Adiciona um novo cliente."""
     if request.method == 'POST':
@@ -996,7 +1040,6 @@ def visualizar_cliente(cliente_id):
 
 @app.route('/cliente/<int:cliente_id>/editar', methods=['GET', 'POST'])
 @login_required
-@audit_log(entity_name='Cliente')
 def editar_cliente(cliente_id):
     """Edita um cliente existente."""
     conn = get_db()
@@ -1143,7 +1186,6 @@ def editar_cliente(cliente_id):
 
 @app.route('/cliente/<int:cliente_id>/deletar', methods=['POST'])
 @login_required
-@audit_log(entity_name='Cliente')
 def deletar_cliente(cliente_id):
     """Deleta um cliente e todas suas cobranças relacionadas."""
     conn = get_db()
@@ -1173,7 +1215,6 @@ def deletar_cliente(cliente_id):
 
 @app.route('/cobranca/adicionar', methods=['GET', 'POST'])
 @login_required
-@audit_log(entity_name='Cobrança')
 def adicionar_cobranca():
     """Adiciona uma nova cobrança."""
     conn = get_db()
@@ -1265,7 +1306,6 @@ def adicionar_cobranca():
 
 @app.route('/cobranca/<int:cobranca_id>/cancelar', methods=['POST'])
 @login_required
-@audit_log(entity_name='Cobrança')
 def cancelar_cobranca(cobranca_id):
     """DELETA uma cobrança e todos os seus registros associados (parcelas, pagamentos)."""
     conn = get_db()
@@ -1303,7 +1343,6 @@ def cancelar_cobranca(cobranca_id):
 
 @app.route('/cobranca/<int:id>/registrar_pagamento', methods=['POST'])
 @login_required
-@audit_log(entity_name='Pagamento')
 def registrar_pagamento(id):
     """Registra um pagamento genérico para uma cobrança."""
     conn = get_db()
@@ -1411,7 +1450,6 @@ def visualizar_pagamentos_cobranca(cobranca_id):
 
 @app.route('/parcela/<int:id>/pagar', methods=['POST'])
 @login_required
-@audit_log(entity_name='Parcela')
 def marcar_parcela_paga(id):
     """Registra pagamento (total ou parcial) de uma parcela."""
     conn = get_db()
@@ -1541,7 +1579,6 @@ def marcar_parcela_paga(id):
 
 @app.route('/parcela/<int:id>/desfazer_pagamento', methods=['POST'])
 @login_required
-@audit_log(entity_name='Parcela')
 def desfazer_pagamento_parcela(id):
     """Estorna um pagamento de parcela já quitada."""
     conn = get_db()
@@ -1632,7 +1669,6 @@ def desfazer_pagamento_parcela(id):
 
 @app.route('/parcela/<int:id>/editar_pagamento', methods=['POST'])
 @login_required
-@audit_log(entity_name='Parcela')
 def editar_pagamento_parcela(id):
     """Permite ajustar o valor pago de uma parcela já registrada."""
     conn = get_db()
@@ -1769,7 +1805,6 @@ def editar_pagamento_parcela(id):
 
 @app.route('/parcela/<int:id>/editar_multa', methods=['POST'])
 @login_required
-@audit_log(entity_name='Parcela')
 def editar_multa_parcela(id):
     """Edita a multa manual de uma parcela."""
     conn = get_db()
@@ -1825,7 +1860,6 @@ def editar_multa_parcela(id):
 
 @app.route('/parcela/<int:id>/editar_data', methods=['POST'])
 @login_required
-@audit_log(entity_name='Parcela')
 def editar_data_parcela(id):
     """Edita a data de vencimento de uma parcela."""
     conn = get_db()
@@ -1883,7 +1917,6 @@ def editar_data_parcela(id):
     
 @app.route('/parcela/<int:id>/forcar_baixa', methods=['POST'])
 @login_required
-@audit_log(entity_name='Parcela')
 def forcar_baixa_parcela(id):
     """Força a baixa de uma parcela manualmente, ajustando valores se necessário."""
     conn = get_db()
@@ -1971,7 +2004,6 @@ def forcar_baixa_parcela(id):
     return redirect(url_for('index'))
 @app.route('/cobrancas/editar/<int:id>', methods=['GET', 'POST'])
 @login_required
-@audit_log(entity_name='Cobrança')
 def editar_cobranca(id):
     """Edita uma cobrança existente."""
     conn = get_db()
@@ -2099,7 +2131,6 @@ def listar_usuarios():
 @app.route('/usuario/adicionar', methods=['GET', 'POST'])
 @login_required
 @adm_required
-@audit_log(entity_name='Usuário')
 def adicionar_usuario():
     """Adiciona um novo usuário."""
     if request.method == 'POST':
@@ -2135,7 +2166,6 @@ def adicionar_usuario():
 @app.route('/usuario/<int:usuario_id>', methods=['GET', 'POST'])
 @login_required
 @adm_required
-@audit_log(entity_name='Usuário')
 def editar_usuario(usuario_id):
     """Edita um usuário existente."""
     conn = get_db()
@@ -2185,7 +2215,6 @@ def editar_usuario(usuario_id):
 @app.route('/usuario/<int:usuario_id>/deletar', methods=['POST'])
 @login_required
 @adm_required
-@audit_log(entity_name='Usuário')
 def excluir_usuario(usuario_id):
     """Exclui um usuário do sistema."""
     conn = get_db()
@@ -2612,27 +2641,6 @@ def fix_datas_festivas():
     """ + "".join([f"<li>{msg}</li>" for msg in log]) + "</ul><br><a href='/'>Voltar ao Dashboard</a>"
     
     return html_response
-
-@app.route('/api/sync/backup', methods=['GET'])
-def download_backup_api():
-    # Senha fixa para o robô
-    SENHA_ROBO = "finanflow2026_secreto"
-    
-    # Verifica a senha no Header
-    key = request.headers.get('X-Backup-Key')
-    
-    if key != SENHA_ROBO:
-        return jsonify({"error": "Acesso negado. Senha incorreta."}), 403
-        
-    # Caminho do arquivo
-    backup_file = os.path.join(os.getcwd(), 'finanflow_backup.jsonl')
-    
-    if os.path.exists(backup_file):
-        # Envia o arquivo para download
-        return send_file(backup_file, as_attachment=True, download_name='backup.jsonl')
-    else:
-        # Retorna 204 (Sem Conteúdo) se ainda não houver backup
-        return '', 204
     
 # --- Execução da Aplicação ---
 if __name__ == '__main__':
